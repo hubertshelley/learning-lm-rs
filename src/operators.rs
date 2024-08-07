@@ -179,7 +179,7 @@ fn test_silu() {
     silu(&mut y, &x);
     assert!(y.close_to(
         &Tensor::<f32>::new(vec![1.4621172, 5.2847824, 11.43089], &vec![1, 3]),
-        1e-3
+        1e-3,
     ));
 }
 
@@ -192,9 +192,9 @@ fn test_rms_norm() {
     assert!(y.close_to(
         &Tensor::<f32>::new(
             vec![0.6324554, 2.5298216, 0.8485281, 2.2627416],
-            &vec![2, 2]
+            &vec![2, 2],
         ),
-        1e-3
+        1e-3,
     ));
 }
 
@@ -206,6 +206,6 @@ fn test_matmul_transb() {
     matmul_transb(&mut c, 1., &a, &b, 1.);
     assert!(c.close_to(
         &Tensor::<f32>::new(vec![15., 34., 35., 81.], &vec![2, 2]),
-        1e-3
+        1e-3,
     ));
 }
