@@ -71,7 +71,26 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    let len = y.size();
+    let w_len = w.size();
+    assert_eq!(y.shape(), x.shape());
+    assert_eq!(len % w_len, 0);
+
+    let y = unsafe { y.data_mut() };
+    let x = x.data();
+    let w = w.data();
+    for i in 0..len / w_len {
+        // 分母
+        let denom = x[w_len * i..w_len * (i + 1)]
+            .iter()
+            .map(|&x| x.powi(2))
+            .sum::<f32>()
+            / w_len as f32
+            + epsilon;
+        for j in 0..w_len {
+            y[w_len * i + j] = w[j] * x[w_len * i + j] / denom.sqrt();
+        }
+    }
 }
 
 // y = sigmoid(x) * x * y
@@ -190,6 +209,12 @@ fn test_rms_norm() {
     let x = Tensor::<f32>::new(vec![1., 2., 3., 4.], &vec![2, 2]);
     let w = Tensor::<f32>::new(vec![1., 2.], &vec![2]);
     rms_norm(&mut y, &x, &w, 1e-6);
+    y.print();
+    Tensor::<f32>::new(
+        vec![0.6324554, 2.5298216, 0.8485281, 2.2627416],
+        &vec![2, 2],
+    )
+    .print();
     assert!(y.close_to(
         &Tensor::<f32>::new(
             vec![0.6324554, 2.5298216, 0.8485281, 2.2627416],
