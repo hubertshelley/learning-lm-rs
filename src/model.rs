@@ -4,10 +4,12 @@ use std::vec;
 use crate::config::LlamaConfigJson;
 use crate::kvcache::KVCache;
 use crate::operators as OP;
+use crate::operators::{matmul_transb, rms_norm, silu};
 use crate::params::LLamaParams;
 use crate::tensor::Tensor;
 use safetensors::SafeTensors;
 use std::path::Path;
+
 pub struct Llama<T> {
     vocab: usize,           // vocab size
     n_layers: usize,        // number of layers
@@ -167,7 +169,15 @@ fn mlp(
     rms_w: &Tensor<f32>,
     eps: f32,
 ) {
-    todo!("Implement mlp");
+    rms_norm(hidden_states, residual, rms_w, eps);
+    matmul_transb(gate, 0., hidden_states, w_gate, 1.0);
+    matmul_transb(up, 0., hidden_states, w_up, 1.0);
+    silu(up, gate);
+    matmul_transb(hidden_states, 0., up, w_down, 1.0);
+    let residual = unsafe { residual.data_mut() };
+    for i in 0..residual.len() {
+        residual[i] += hidden_states.data()[i];
+    }
 }
 
 #[test]

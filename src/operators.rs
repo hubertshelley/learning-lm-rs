@@ -111,12 +111,11 @@ pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
     let c_row = c.shape()[0];
     let c_col = c.shape()[1];
-    assert_eq!(a.shape(), b.shape());
+    assert_eq!(a.shape()[1], b.shape()[1]);
     assert_eq!(c_row, a.shape()[0]);
     assert_eq!(c_col, b.shape()[0]);
     let a_col = a.shape()[1];
     let b_col = b.shape()[1];
-    let b_len = b.size();
     let c = unsafe { c.data_mut() };
     let a = a.data();
     let b = b.data();
