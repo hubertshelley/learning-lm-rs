@@ -33,6 +33,7 @@ impl LLamaParams<f32> {
                 unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
             Tensor::new(data.to_vec(), &tensor.shape().to_vec())
         };
+        let head_size = config.hidden_size / config.num_attention_heads;
         let embedding_table = get_tensor("lm_head.weight");
         assert_eq!(
             embedding_table.shape(),
@@ -47,43 +48,34 @@ impl LLamaParams<f32> {
             get_tensor("model.layers.0.self_attn.q_proj.weight"),
             get_tensor("model.layers.1.self_attn.q_proj.weight"),
         ];
-        // assert_eq!(
-        //     wq[0].shape(),
-        //     &[config.num_key_value_heads * config.num_attention_heads, config.hidden_size]
-        // );
+        assert_eq!(
+            wq[0].shape(),
+            &[head_size * config.num_attention_heads, config.hidden_size]
+        );
         let wk = vec![
             get_tensor("model.layers.0.self_attn.k_proj.weight"),
             get_tensor("model.layers.1.self_attn.k_proj.weight"),
         ];
-        // assert_eq!(
-        //     wk[0].shape(),
-        //     &[
-        //         config.num_key_value_heads * config.num_attention_heads,
-        //         config.hidden_size
-        //     ]
-        // );
+        assert_eq!(
+            wk[0].shape(),
+            &[config.num_key_value_heads * head_size, config.hidden_size]
+        );
         let wv = vec![
             get_tensor("model.layers.0.self_attn.v_proj.weight"),
             get_tensor("model.layers.1.self_attn.v_proj.weight"),
         ];
-        // assert_eq!(
-        //     wv[0].shape(),
-        //     &[
-        //         config.num_key_value_heads * config.num_attention_heads,
-        //         config.hidden_size
-        //     ]
-        // );
+        assert_eq!(
+            wv[0].shape(),
+            &[config.num_key_value_heads * head_size, config.hidden_size]
+        );
         let wo = vec![
             get_tensor("model.layers.0.self_attn.o_proj.weight"),
             get_tensor("model.layers.1.self_attn.o_proj.weight"),
         ];
-        // assert_eq!(
-        //     wv[0].shape(),
-        //     &[
-        //         config.hidden_size,
-        //         config.num_key_value_heads * config.num_attention_heads,
-        //     ]
-        // );
+        assert_eq!(
+            wv[0].shape(),
+            &[config.num_key_value_heads * head_size, config.hidden_size,]
+        );
         let rms_ffn_w = vec![
             get_tensor("model.layers.0.post_attention_layernorm.weight"),
             get_tensor("model.layers.1.post_attention_layernorm.weight"),

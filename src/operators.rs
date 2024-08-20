@@ -73,7 +73,7 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
     let len = y.size();
     let w_len = w.size();
-    assert_eq!(y.shape(), x.shape());
+    assert_eq!(y.size(), x.size());
     assert_eq!(len % w_len, 0);
 
     let y = unsafe { y.data_mut() };
@@ -124,6 +124,30 @@ pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor
             let sum = a[i * a_col..i * a_col + a_col]
                 .iter()
                 .zip(b[j * b_col..j * b_col + b_col].iter())
+                .map(|(&a, &b)| a * b)
+                .sum::<f32>();
+            c[i * c_col + j] = beta * c[i * c_col + j] + alpha * sum;
+        }
+    }
+}
+// C = beta * C + alpha * A @ B
+// hint: You don't need to do an explicit of B
+pub fn matmul_b(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
+    let c_row = c.shape()[0];
+    let c_col = c.shape()[1];
+    assert_eq!(a.shape()[1], b.shape()[0]);
+    assert_eq!(c_row, a.shape()[0]);
+    assert_eq!(c_col, b.shape()[1]);
+    let a_col = a.shape()[1];
+    let b_col = b.shape()[1];
+    let c = unsafe { c.data_mut() };
+    let a = a.data();
+    let b = b.data();
+    for i in 0..c_row {
+        for j in 0..c_col {
+            let sum = a[i * a_col..i * a_col + a_col]
+                .iter()
+                .zip(b[j..].iter().step_by(b_col))
                 .map(|(&a, &b)| a * b)
                 .sum::<f32>();
             c[i * c_col + j] = beta * c[i * c_col + j] + alpha * sum;
@@ -249,6 +273,18 @@ fn test_matmul_transb() {
     let a = Tensor::<f32>::new(vec![1., 2., 3., 4., 5., 6.], &vec![2, 3]);
     let b = Tensor::<f32>::new(vec![1., 2., 3., 4., 5., 6.], &vec![2, 3]);
     matmul_transb(&mut c, 1., &a, &b, 1.);
+    assert!(c.close_to(
+        &Tensor::<f32>::new(vec![15., 34., 35., 81.], &vec![2, 2]),
+        1e-3,
+    ));
+}
+
+#[test]
+fn test_matmul_b() {
+    let mut c = Tensor::<f32>::new(vec![1., 2., 3., 4.], &vec![2, 2]);
+    let a = Tensor::<f32>::new(vec![1., 2., 3., 4., 5., 6.], &vec![2, 3]);
+    let b = Tensor::<f32>::new(vec![1., 4., 2., 5., 3., 6.], &vec![3, 2]);
+    matmul_b(&mut c, 1., &a, &b, 1.);
     assert!(c.close_to(
         &Tensor::<f32>::new(vec![15., 34., 35., 81.], &vec![2, 2]),
         1e-3,

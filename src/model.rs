@@ -4,7 +4,7 @@ use std::vec;
 use crate::config::LlamaConfigJson;
 use crate::kvcache::KVCache;
 use crate::operators as OP;
-use crate::operators::{matmul_transb, rms_norm, silu};
+use crate::operators::{masked_softmax, matmul_b, matmul_transb, rms_norm, silu};
 use crate::params::LLamaParams;
 use crate::tensor::Tensor;
 use safetensors::SafeTensors;
@@ -103,10 +103,36 @@ impl Llama<f32> {
             let full_k = &mut cache.k_cache(layer, 0); // (total_seq, n_kv_h * dqkv)
             let full_v = &mut cache.v_cache(layer, 0); // (total_seq, n_kv_h * dqkv)
 
-            todo!("self_attention(...)");
-            todo!("down_proj matmul and add residual");
+            self_attention(
+                &mut hidden_states,
+                &mut att_scores,
+                q,
+                full_k,
+                full_v,
+                self.n_kv_h,
+                self.n_q_h / self.n_kv_h,
+                seq_len,
+                total_seq_len,
+                self.dqkv,
+            );
+            let shape = hidden_states.shape().clone();
+            let x = hidden_states.slice(0, &shape);
+            OP::matmul_transb(&mut hidden_states, 0., &x, &self.params.wo[layer], 1.0);
+            // todo!("down_proj matmul and add residual");
 
-            todo!("mlp(...)");
+            // todo!("mlp(...)");
+            mlp(
+                &mut residual,
+                &mut hidden_states,
+                &mut gate_buf,
+                &mut up_buf,
+                &self.params.w_up[layer],
+                &self.params.w_down[layer],
+                &self.params.w_gate[layer],
+                &self.params.rms_att_w[layer],
+                self.eps,
+            );
+            // break;
         }
 
         // No matter what seq_len, the output is always a 1D vector of length vocab,
@@ -137,7 +163,27 @@ impl Llama<f32> {
     ) -> Vec<u32> {
         let mut result = Vec::<u32>::new();
 
-        todo!("实现文本生成");
+        // todo!("实现文本生成");
+        let mut cache = self.new_cache();
+        let mut logits = Tensor::<u32>::new(token_ids.to_vec(), &vec![token_ids.len()]);
+        for index in 0..self.max_seq_len {
+            let logits_f32 = self.forward(&logits, &mut cache);
+            let sample = OP::random_sample(&logits_f32, top_p, top_k, temperature);
+            // break;
+            if sample == self.eos_token_id {
+                break;
+            }
+
+            result.push(sample);
+
+            if index == max_len {
+                break;
+            }
+
+            let mut data = logits.data().to_vec();
+            data.push(sample);
+            logits = Tensor::<u32>::new(vec![sample], &vec![1]);
+        }
 
         result
     }
@@ -155,7 +201,218 @@ fn self_attention(
     total_seq_len: usize,
     dqkv: usize,
 ) {
-    todo!("Implement self_attention");
+    // 数据检查
+    assert_eq!(
+        hidden_states.shape(),
+        &vec![seq_len, n_kv_h * n_groups * dqkv]
+    );
+    assert_eq!(
+        att_scores.shape(),
+        &vec![n_kv_h, n_groups, seq_len, total_seq_len]
+    );
+    assert_eq!(q.shape(), &vec![seq_len, n_kv_h * n_groups, dqkv]);
+    assert_eq!(k.shape(), &vec![total_seq_len, n_kv_h * dqkv]);
+    assert_eq!(v.shape(), &vec![total_seq_len, n_kv_h * dqkv]);
+
+    let mut att_scores_list = {
+        let mut items = Vec::new();
+        for i in 0..n_kv_h {
+            items.push(att_scores.slice(
+                i * n_groups * seq_len * total_seq_len,
+                &vec![n_groups * seq_len, total_seq_len],
+            ));
+        }
+        items
+    };
+
+    let q_list = {
+        let mut items = Vec::new();
+        for i in 0..n_kv_h {
+            items.push(q.slice(
+                i * n_groups * seq_len * dqkv,
+                &vec![n_groups * seq_len, dqkv],
+            ));
+        }
+        items
+    };
+
+    let k_list = {
+        let mut items = Vec::new();
+        for i in 0..n_kv_h {
+            items.push(k.slice(i * total_seq_len * dqkv, &vec![total_seq_len, dqkv]));
+        }
+        items
+    };
+
+    let v_list = {
+        let mut items = Vec::new();
+        for i in 0..n_kv_h {
+            items.push(v.slice(i * total_seq_len * dqkv, &vec![total_seq_len, dqkv]));
+        }
+        items
+    };
+
+    for i in 0..n_kv_h {
+        matmul_transb(
+            &mut att_scores_list[i],
+            0.,
+            &q_list[i],
+            &k_list[i],
+            1.0 / (dqkv as f32).sqrt(),
+        )
+    }
+
+    let att_scores_data = unsafe { att_scores.data_mut() };
+    for (i, &f) in att_scores_list.iter().flat_map(|x| x.data()).enumerate() {
+        att_scores_data[i] = f;
+    }
+    masked_softmax(att_scores);
+
+    let att_scores_list = {
+        let mut items = Vec::new();
+        for i in 0..n_kv_h {
+            items.push(att_scores.slice(
+                i * n_groups * seq_len * total_seq_len,
+                &vec![n_groups * seq_len, total_seq_len],
+            ));
+        }
+        items
+    };
+    let mut hidden_states_list = {
+        let mut items = Vec::new();
+        for _ in 0..n_kv_h {
+            items.push(Tensor::<f32>::default(&vec![n_groups * seq_len, dqkv]));
+        }
+        items
+    };
+
+    for i in 0..n_kv_h {
+        matmul_b(
+            &mut hidden_states_list[i],
+            0.,
+            &att_scores_list[i],
+            &v_list[i],
+            1.0,
+        )
+    }
+    let hidden_states_data = unsafe { hidden_states.data_mut() };
+    for (i, &f) in hidden_states_list.iter().flat_map(|x| x.data()).enumerate() {
+        hidden_states_data[i] = f;
+    }
+
+    // matmul_transb(
+    //     hidden_states,
+    //     0.,
+    //     att_scores.reshape(&vec![att_scores.size() / (n_kv_h * dqkv), n_kv_h * dqkv]),
+    //     v,
+    //     1.0,
+    // )
+    // vec_multi_wight(hidden_states, att_scores, v);
+    // let mut hidden_states_data = unsafe { hidden_states.data_mut() };
+    // hidden_states_data
+    //     .iter_mut()
+    //     .enumerate()
+    //     .for_each(|(i, &mut mut x)| x += att_scores.data()[i]);
+}
+pub fn vec_multi(c: &mut Tensor<f32>, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32, t: bool) {
+    // 判断c，长度是否大于二
+    assert!(
+        c.shape().len() > 2,
+        "vec_multi of dimensions must be at least 2"
+    );
+    // a 重要，用于切分数据
+    assert!(a.shape().len() == 2, "vec_multi of dimensions must be 2");
+    assert!(b.shape().len() == 2, "vec_multi of dimensions must be 2");
+    let shape = c.shape();
+    // 获取矩阵的行列数
+    let (row, column) = (shape[shape.len() - 2], shape[shape.len() - 1]);
+    // 获取n_q_h，用于分组
+    let q_head_len = shape[..shape.len() - 2].iter().product::<usize>();
+    // 确定qk的倍数对应关系
+    let q_k_reflect = a.shape()[1] / b.shape()[1];
+    let vec_len = a.shape()[1] / q_head_len;
+    let a_data = a.data();
+    // 用于获取q_head需要进行跳过的数值
+    let a_skip = a.shape()[1];
+    let b_data = b.data();
+    // 用于获取k_head需要进行跳过的数值
+    let b_skip = b.shape()[1];
+    let data = unsafe { c.data_mut() };
+    // 清理脏数据
+    data.fill(0.);
+    let mut c_data_offset = 0;
+    if t {
+        // 用于分组计算，每个输入，在每个请求头下的vjiv
+        for i in 0..q_head_len {
+            // 计算一个输入值，在一个请求头下的total中的所有v
+            for j in 0..row {
+                // 临时q_head 值,j*a_skip用于跳过多头i*16用于跳过单头
+                let a_tmp =
+                    &a_data[(i * vec_len + j * a_skip)..(i * vec_len + j * a_skip) + vec_len];
+                // 计算单一v
+                for k in 0..column {
+                    let b_tmp = &b_data[(k * b_skip + (i / q_k_reflect) * vec_len)
+                        ..(k * b_skip + (i / q_k_reflect) * vec_len) + vec_len];
+                    data[c_data_offset] = a_tmp
+                        .iter()
+                        .zip(b_tmp.iter())
+                        .fold(0., |tmp, (a_val, b_val)| tmp + a_val * b_val)
+                        * alpha;
+                    c_data_offset += 1;
+                }
+            }
+        }
+    }
+}
+// 只用于得分计算
+// a代表所处理的权重,b代表所要乘的向量
+pub fn vec_multi_wight(c: &mut Tensor<f32>, a: &Tensor<f32>, b: &Tensor<f32>) {
+    assert!(
+        b.shape().len() == 2,
+        "matmul_transb of dimensions must be at least 2"
+    );
+    assert!(
+        a.shape().len() == 4,
+        "matmul_transb of dimensions must be  4 是att_scores)"
+    );
+    let q_header_len = a.shape()[..a.shape().len() - 2].iter().product::<usize>();
+    let shape = a.shape();
+    // 获取矩阵的行列数
+    let (row, column) = (shape[shape.len() - 2], shape[shape.len() - 1]);
+    // 获取计算向量的长度
+    let vec_len = b.shape()[1] / a.shape()[0];
+    // 确认a，b需要的对应关系,默认a的长度大于b的长度
+    let n_groups = a.shape()[1];
+    let b_column = b.shape()[1];
+    let mut data = unsafe { c.data_mut() };
+    // 清理脏数据
+    data.fill(0.);
+    for i in 0..q_header_len {
+        // 获取当前q下的的全部注意力
+        let a_data = &a.data()[i * row * column..(i + 1) * row * column];
+        // 循环计算每个当前q下，每个输入的v权重
+        for c_i in 0..row {
+            // 用于标记当前计算到那一列
+            let mut b_data_row_offset = 0;
+            let tmp_c_offset = n_groups * b_column * c_i + i * vec_len;
+            // 获取c存储当先向量的位置，
+            let tmp_c = &mut data[tmp_c_offset..tmp_c_offset + vec_len];
+            // 获取一个输入的全部注意力
+            a_data[c_i * column..(c_i + 1) * column]
+                .iter()
+                .for_each(|tmp| {
+                    // 获取q，对应的v b_data_row_offset*b_column表示要跳过的input
+                    // (q_header_len/n_groups)*vec_len 表示q对应的v
+                    let tmp_offset = b_data_row_offset * b_column + (i / n_groups) * vec_len;
+                    let b_data = &b.data()[tmp_offset..tmp_offset + vec_len];
+                    b_data.iter().zip(tmp_c.iter_mut()).for_each(|(t_b, t_c)| {
+                        *t_c += t_b * tmp;
+                    });
+                    // 进行偏移
+                    b_data_row_offset += 1;
+                });
+        }
+    }
 }
 
 fn mlp(

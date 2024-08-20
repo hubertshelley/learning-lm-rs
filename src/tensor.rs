@@ -1,9 +1,35 @@
+use std::ops::Add;
 use std::{slice, sync::Arc, vec};
+
 pub struct Tensor<T> {
     data: Arc<Box<[T]>>,
     shape: Vec<usize>,
     offset: usize,
     length: usize,
+}
+
+impl<T> Add<&Tensor<T>> for Tensor<T>
+where
+    T: Add<Output = T> + Default + Clone + Copy,
+{
+    type Output = Self;
+    fn add(self, other: &Tensor<T>) -> Self {
+        let left = self.data;
+        let right = other.data.clone();
+        let shape = self.shape;
+        assert_eq!(shape, other.shape);
+        let length = self.length;
+        let mut data = vec![T::default(); length];
+        for i in 0..length {
+            data[i] = left[i].clone() + right[i].clone();
+        }
+        Tensor {
+            data: Arc::new(data.into_boxed_slice().try_into().unwrap()),
+            shape,
+            offset: 0,
+            length,
+        }
+    }
 }
 
 impl<T: Copy + Clone + Default> Tensor<T> {

@@ -19,8 +19,8 @@ impl<T: Default + Copy> KVCache<T> {
             v_cache: (0..n_layers)
                 .map(|_| Tensor::default(&vec![max_seq_len, dim]))
                 .collect(),
-            max_seq_len: max_seq_len,
-            dim: dim,
+            max_seq_len,
+            dim,
             length: init_len,
         }
     }
