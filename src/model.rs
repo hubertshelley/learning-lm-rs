@@ -163,32 +163,54 @@ impl Llama<f32> {
         top_p: f32,
         top_k: u32,
         temperature: f32,
-    ) -> Vec<u32> {
-        let mut result = Vec::<u32>::new();
-
-        // todo!("实现文本生成");
+    ) -> LlamaGenerator<f32> {
         let mut cache = self.new_cache();
         let mut logits = Tensor::<u32>::new(token_ids.to_vec(), &vec![token_ids.len()]);
-        for index in 0..self.max_seq_len {
-            let logits_f32 = self.forward(&logits, &mut cache);
-            let sample = OP::random_sample(&logits_f32, top_p, top_k, temperature);
-            // break;
-            if sample == self.eos_token_id {
-                break;
-            }
-
-            result.push(sample);
-
-            if index == max_len {
-                break;
-            }
-
-            let mut data = logits.data().to_vec();
-            data.push(sample);
-            logits = Tensor::<u32>::new(vec![sample], &vec![1]);
+        LlamaGenerator {
+            model: self,
+            cache,
+            logits,
+            max_seq_len: self.max_seq_len,
+            max_tokens: max_len,
+            eos_token_id: self.eos_token_id,
+            top_p,
+            top_k,
+            temperature,
+            generated_count: 0,
+            sample: 0,
         }
+    }
+}
 
-        result
+pub struct LlamaGenerator<'a, T> {
+    model: &'a Llama<T>,
+    cache: KVCache<T>,
+    logits: Tensor<u32>,
+    max_seq_len: usize,
+    max_tokens: usize,
+    eos_token_id: u32,
+    top_p: f32,
+    top_k: u32,
+    temperature: f32,
+    generated_count: usize,
+    sample: u32,
+}
+
+impl Iterator for LlamaGenerator<'_, f32> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.max_seq_len == self.max_tokens || self.max_seq_len == self.generated_count {
+            None
+        } else {
+            let logits_f32 = self.model.forward(&self.logits, &mut self.cache);
+            self.sample = OP::random_sample(&logits_f32, self.top_p, self.top_k, self.temperature);
+            if self.sample == self.eos_token_id {
+                return None;
+            }
+            self.logits = Tensor::<u32>::new(vec![self.sample], &vec![1]);
+            Some(self.sample)
+        }
     }
 }
 
