@@ -191,58 +191,7 @@ impl Llama<f32> {
         result
     }
 }
-// 只用于得分计算
-// a代表所处理的权重,b代表所要乘的向量
-pub fn vec_multi_wight(c: &mut Tensor<f32>, a: &Tensor<f32>, b: &Tensor<f32>) {
-    assert!(
-        b.shape().len() == 2,
-        "matmul_transb of dimensions must be at least 2"
-    );
-    assert!(
-        a.shape().len() == 4,
-        "matmul_transb of dimensions must be  4 是att_scores)"
-    );
-    // n_kv_h, n_groups
-    let n_q_h = a.shape()[..a.shape().len() - 2].iter().product::<usize>();
-    let shape = a.shape();
-    // 获取矩阵的行列数
-    let (seq_len, total_seq_len) = (shape[shape.len() - 2], shape[shape.len() - 1]);
-    // 获取计算向量的长度
-    let dqkv = b.shape()[1] / a.shape()[0];
-    // 确认a，b需要的对应关系,默认a的长度大于b的长度
-    let n_groups = a.shape()[1];
-    // n_kv_h * dqkv
-    let b_column = b.shape()[1];
-    let mut data = unsafe { c.data_mut() };
-    // 清理脏数据
-    data.fill(0.);
-    for i in 0..n_q_h {
-        // 获取当前q下的的全部注意力
-        let a_data = &a.data()[i * seq_len * total_seq_len..(i + 1) * seq_len * total_seq_len];
-        // 循环计算每个当前q下，每个输入的v权重
-        for c_i in 0..seq_len {
-            // 用于标记当前计算到那一列
-            let mut b_data_row_offset = 0;
-            let tmp_c_offset = n_groups * b_column * c_i + i * dqkv;
-            // 获取c存储当先向量的位置，
-            let tmp_c = &mut data[tmp_c_offset..tmp_c_offset + dqkv];
-            // 获取一个输入的全部注意力
-            a_data[c_i * total_seq_len..(c_i + 1) * total_seq_len]
-                .iter()
-                .for_each(|tmp| {
-                    // 获取q，对应的v b_data_row_offset*b_column表示要跳过的input
-                    // (q_header_len/n_groups)*vec_len 表示q对应的v
-                    let tmp_offset = b_data_row_offset * b_column + (i / n_groups) * dqkv;
-                    let b_data = &b.data()[tmp_offset..tmp_offset + dqkv];
-                    b_data.iter().zip(tmp_c.iter_mut()).for_each(|(t_b, t_c)| {
-                        *t_c += t_b * tmp;
-                    });
-                    // 进行偏移
-                    b_data_row_offset += 1;
-                });
-        }
-    }
-}
+
 fn self_attention(
     hidden_states: &mut Tensor<f32>, // (seq, n_kv_h * n_groups * dqkv)
     att_scores: &mut Tensor<f32>,    // (n_kv_h, n_groups, seq, total_seq)
