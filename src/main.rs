@@ -15,16 +15,16 @@ fn main() {
     let llama = model::Llama::<f32>::from_safetensors(&model_dir);
     let tokenizer = Tokenizer::from_file(model_dir.join("tokenizer.json")).unwrap();
     //     let input = r#"<|im_start|>system
-    // you are a great person<|im_end|>
+    // You are a highly knowledgeable and friendly assistant. Your goal is to understand and respond to user inquiries with clarity. Your interactions are always respectful, helpful, and focused on delivering the most accurate information to the user.<|im_end|>
     // <|im_start|>user
-    // hello, how are you today?<|im_end|>
+    // Hey! Got a question for you!<|im_end|>
     // <|im_start|>assistant
     // "#;
     let input = "<|start_story|>Once upon a time, ";
     let binding = tokenizer.encode(input, true).unwrap();
     let input_ids = binding.get_ids();
     eprint!("\n{}", input);
-    let output_ids = llama.generate(input_ids, 500, 0.1, 10, 1.0);
+    let output_ids = llama.generate(input_ids, 256, 0.55, 35, 0.65);
     for token_id in output_ids {
         eprint!("{}", tokenizer.decode(&vec![token_id], true).unwrap());
     }

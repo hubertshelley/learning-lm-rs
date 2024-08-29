@@ -133,7 +133,7 @@ impl Llama<f32> {
                 &self.params.w_up[layer],
                 &self.params.w_down[layer],
                 &self.params.w_gate[layer],
-                &self.params.rms_att_w[layer],
+                &self.params.rms_ffn_w[layer],
                 self.eps,
             );
         }
@@ -176,6 +176,7 @@ impl Llama<f32> {
             top_p,
             top_k,
             temperature,
+            input_token_len: token_ids.len(),
             generated_count: 0,
             sample: 0,
         }
@@ -192,6 +193,7 @@ pub struct LlamaGenerator<'a, T> {
     top_p: f32,
     top_k: u32,
     temperature: f32,
+    input_token_len: usize,
     generated_count: usize,
     sample: u32,
 }
@@ -200,11 +202,14 @@ impl Iterator for LlamaGenerator<'_, f32> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.max_seq_len == self.max_tokens || self.max_seq_len == self.generated_count {
+        if self.generated_count == self.max_tokens
+            || self.max_seq_len == (self.generated_count + self.input_token_len)
+        {
             None
         } else {
             let logits_f32 = self.model.forward(&self.logits, &mut self.cache);
             self.sample = OP::random_sample(&logits_f32, self.top_p, self.top_k, self.temperature);
+            self.generated_count += 1;
             if self.sample == self.eos_token_id {
                 return None;
             }
@@ -238,63 +243,52 @@ fn self_attention(
     assert_eq!(q.shape(), &vec![seq_len, n_kv_h * n_groups, dqkv]);
     assert_eq!(k.shape(), &vec![total_seq_len, n_kv_h * dqkv]);
     assert_eq!(v.shape(), &vec![total_seq_len, n_kv_h * dqkv]);
-
     let att_scores_data = unsafe { att_scores.data_mut() };
     let mut att_scores_data_offset = 0;
-    for head_index in 0..n_kv_h * n_groups {
-        for seq_i in 0..seq_len {
-            let q = &q.slice(
-                head_index * dqkv + seq_i * n_kv_h * n_groups * dqkv,
-                &vec![1, dqkv],
-            );
-            // 计算单一v
-            for total_index in 0..total_seq_len {
-                let k = &k.slice(
-                    total_index * n_kv_h * dqkv + (head_index / n_groups) * dqkv,
-                    &vec![1, dqkv],
-                );
-                att_scores_data[att_scores_data_offset] =
-                    OP::dot(q, k) * (1. / (dqkv as f32).sqrt());
-                att_scores_data_offset += 1;
+    let q_data = q.data();
+    let k_data = k.data();
+    let v_data = v.data();
+    for head_index in 0..n_kv_h {
+        for group_index in 0..n_groups {
+            for seq_i in 0..seq_len {
+                for total_index in 0..total_seq_len {
+                    let q_start_index = head_index * n_groups * dqkv
+                        + group_index * dqkv
+                        + seq_i * n_kv_h * n_groups * dqkv;
+                    let k_start_index = head_index * dqkv + total_index * n_kv_h * dqkv;
+                    att_scores_data[att_scores_data_offset] = q_data
+                        [q_start_index..q_start_index + dqkv]
+                        .iter()
+                        .zip(k_data[k_start_index..k_start_index + dqkv].iter())
+                        .map(|(q, k)| q * k / (dqkv as f32).sqrt())
+                        .sum();
+                    att_scores_data_offset += 1;
+                }
             }
         }
     }
 
     masked_softmax(att_scores);
-
+    let att_scores_data = att_scores.data();
     let hidden_states_data = unsafe { hidden_states.data_mut() };
-
-    // 每一组的注意力
-    for head_index in 0..n_kv_h * n_groups {
-        // 输入序列
-        for seq_i in 0..seq_len {
-            let mut seq_offset = 0;
-            let tmp_offset = n_groups * n_kv_h * dqkv * seq_i + head_index * dqkv;
-            // 获取要输出的值
-            let tmp_c = &mut hidden_states_data[tmp_offset..tmp_offset + dqkv];
-            // 获取一个输入的全部注意力
-            att_scores
-                .slice(
-                    head_index * seq_len * total_seq_len + seq_i * total_seq_len,
-                    &vec![1, total_seq_len],
-                )
-                .data()
-                .iter()
-                .for_each(|qk| {
-                    // 对每组qkv进行求和
-                    v.slice(
-                        seq_offset * n_kv_h * dqkv + (head_index / n_groups) * dqkv,
-                        &vec![1, dqkv],
-                    )
-                    .data()
-                    .iter()
-                    .zip(tmp_c.iter_mut())
-                    .for_each(|(v, x)| {
-                        *x += qk * v;
-                    });
-                    // 进行偏移
-                    seq_offset += 1;
-                });
+    let mut hidden_states_data_offset = 0;
+    for head_index in 0..n_kv_h {
+        for group_index in 0..n_groups {
+            for seq_i in 0..seq_len {
+                for total_index in 0..dqkv {
+                    let att_start_index = head_index * n_groups * seq_len * total_seq_len
+                        + group_index * seq_len * total_seq_len
+                        + seq_i * total_seq_len;
+                    let v_start_index = head_index * dqkv + total_index;
+                    hidden_states_data[hidden_states_data_offset] += att_scores_data
+                        [att_start_index..att_start_index + total_seq_len]
+                        .iter()
+                        .zip(v_data.iter().skip(v_start_index).step_by(n_kv_h * dqkv))
+                        .map(|(q, k)| q * k)
+                        .sum::<f32>();
+                    hidden_states_data_offset += 1;
+                }
+            }
         }
     }
 }
@@ -425,4 +419,84 @@ pub fn test_load_safetensors() {
         1e-6
     ));
     assert!(float_eq(&model.params.wo[0].data()[100], &0.01965332, 1e-6));
+}
+
+#[test]
+pub fn test_tensor_transpose() {
+    let a = {
+        let mut a = vec![];
+        for i in 1..2 * 4 * 6 * 16 + 1 {
+            a.push(i);
+        }
+        a
+    };
+    for head_index in 0..4 {
+        for group_index in 0..2 {
+            for seq_i in 0..6 {
+                let start_index = head_index * 2 * 16 + group_index * 16 + seq_i * 4 * 2 * 16;
+                let q = &a[start_index..start_index + 16];
+                println!("{:?}", q);
+            }
+        }
+    }
+}
+
+#[test]
+pub fn test_tensor_transpose_repeat() {
+    let a = {
+        let mut a = vec![];
+        for i in 1..4 * 6 * 16 + 1 {
+            a.push(i);
+        }
+        a
+    };
+    for head_index in 0..4 {
+        for _group_index in 0..2 {
+            for seq_i in 0..6 {
+                // for _total_index in 0..6 {
+                let start_index = head_index * 16 + seq_i * 4 * 16;
+                let q = &a[start_index..start_index + 16];
+                println!("{:?}", q);
+                // }
+            }
+        }
+    }
+}
+#[test]
+pub fn test_v_tensor_transpose_repeat() {
+    let a = {
+        let mut a = vec![];
+        for i in 1..4 * 6 * 16 + 1 {
+            a.push(i);
+        }
+        a
+    };
+    for head_index in 0..4 {
+        for _group_index in 0..2 {
+            for seq_i in 0..6 {
+                for total_index in 0..16 {
+                    let start_index = head_index * 16 + total_index;
+                    let q = a
+                        .iter()
+                        .skip(start_index)
+                        .step_by(4 * 16)
+                        .collect::<Vec<_>>();
+                    println!("{:?}", q);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+pub fn test_index() {
+    let mut offset = 0;
+    for head_index in 0..4 {
+        for group_index in 0..2 {
+            for seq_i in 0..6 {
+                offset = head_index * 4 * 2 * 6 + group_index * 2 * 6 + seq_i;
+                println!("{:?}", offset);
+            }
+        }
+    }
 }
