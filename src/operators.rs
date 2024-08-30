@@ -42,30 +42,15 @@ pub fn rope(y: &mut Tensor<f32>, start_pos: usize, theta: f32) {
 pub fn masked_softmax(y: &mut Tensor<f32>) {
     let ndim = y.shape().len();
     assert!(ndim >= 2);
-    let seq_len = y.shape()[ndim - 2];
-    let total_seq_len = y.shape()[ndim - 1];
-    let batch = y.size() / (seq_len * total_seq_len);
+    let seq = y.shape()[ndim - 1];
+    let batch = y.size() / seq;
     let data = unsafe { y.data_mut() };
     for b in 0..batch {
-        let base = b * seq_len * total_seq_len;
-        for i in 0..seq_len {
-            let offset = base + i * total_seq_len;
-            let boundary = total_seq_len - seq_len + i + 1;
-
-            let max = data[offset..offset + boundary]
-                .iter()
-                .fold(data[offset], |a, b| a.max(*b));
-
-            let sum = (0..boundary)
-                .map(|j| {
-                    let e = (data[offset + j] - max).exp();
-                    data[offset + j] = e;
-                    e
-                })
-                .sum::<f32>();
-
-            (0..boundary).for_each(|j| data[offset + j] /= sum);
-            (boundary..total_seq_len).for_each(|j| data[offset + j] = 0.0);
+        let seq_data = data[b * seq..(b + 1) * seq].to_vec();
+        let max = seq_data.iter().fold(seq_data[0], |a, b| a.max(*b));
+        let sum = seq_data.iter().map(|&x| (x - max).exp()).sum::<f32>();
+        for i in 0..seq {
+            data[b * seq + i] = (seq_data[i] - max).exp() / sum;
         }
     }
 }

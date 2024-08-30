@@ -255,11 +255,12 @@ fn self_attention(
                     let q_start_index = head_index * n_groups * dqkv
                         + group_index * dqkv
                         + seq_i * n_kv_h * n_groups * dqkv;
+                    let query_matrix_line = &q_data[q_start_index..q_start_index + dqkv];
                     let k_start_index = head_index * dqkv + total_index * n_kv_h * dqkv;
-                    att_scores_data[att_scores_data_offset] = q_data
-                        [q_start_index..q_start_index + dqkv]
+                    let k_matrix_line = &k_data[k_start_index..k_start_index + dqkv];
+                    att_scores_data[att_scores_data_offset] = query_matrix_line
                         .iter()
-                        .zip(k_data[k_start_index..k_start_index + dqkv].iter())
+                        .zip(k_matrix_line.iter())
                         .map(|(q, k)| q * k / (dqkv as f32).sqrt())
                         .sum();
                     att_scores_data_offset += 1;
@@ -270,22 +271,41 @@ fn self_attention(
 
     masked_softmax(att_scores);
     let att_scores_data = att_scores.data();
+    let mut pre_transpose_hidden_states = vec![0.0f32; hidden_states.size()];
     let hidden_states_data = unsafe { hidden_states.data_mut() };
     let mut hidden_states_data_offset = 0;
     for head_index in 0..n_kv_h {
         for group_index in 0..n_groups {
             for seq_i in 0..seq_len {
+                let hidden_states_start_index =
+                    seq_i * dqkv + (head_index * n_groups + group_index) * seq_len * dqkv;
                 for total_index in 0..dqkv {
                     let att_start_index = head_index * n_groups * seq_len * total_seq_len
                         + group_index * seq_len * total_seq_len
                         + seq_i * total_seq_len;
                     let v_start_index = head_index * dqkv + total_index;
-                    hidden_states_data[hidden_states_data_offset] += att_scores_data
-                        [att_start_index..att_start_index + total_seq_len]
-                        .iter()
-                        .zip(v_data.iter().skip(v_start_index).step_by(n_kv_h * dqkv))
-                        .map(|(q, k)| q * k)
-                        .sum::<f32>();
+                    pre_transpose_hidden_states[hidden_states_start_index + total_index] +=
+                        att_scores_data[att_start_index..att_start_index + total_seq_len]
+                            .iter()
+                            .zip(v_data.iter().skip(v_start_index).step_by(n_kv_h * dqkv))
+                            .map(|(q, k)| q * k)
+                            .sum::<f32>();
+                    hidden_states_data_offset += 1;
+                }
+            }
+        }
+    }
+    hidden_states_data_offset = 0;
+    for seq_i in 0..seq_len {
+        for head_index in 0..n_kv_h {
+            for group_index in 0..n_groups {
+                let hidden_states_start_index =
+                    seq_i * dqkv + (head_index * n_groups + group_index) * seq_len * dqkv;
+                for total_index in 0..dqkv {
+                    // hidden_states_data[hidden_states_data_offset] =
+                    //     pre_transpose_hidden_states[hidden_states_start_index + total_index];
+                    hidden_states_data[hidden_states_start_index + total_index] =
+                        pre_transpose_hidden_states[hidden_states_data_offset];
                     hidden_states_data_offset += 1;
                 }
             }
@@ -471,31 +491,99 @@ pub fn test_v_tensor_transpose_repeat() {
         }
         a
     };
+    // for seq_i in 0..6 {
     for head_index in 0..4 {
         for _group_index in 0..2 {
-            for seq_i in 0..6 {
-                for total_index in 0..16 {
-                    let start_index = head_index * 16 + total_index;
-                    let q = a
-                        .iter()
-                        .skip(start_index)
-                        .step_by(4 * 16)
-                        .collect::<Vec<_>>();
-                    println!("{:?}", q);
-                }
+            for total_index in 0..16 {
+                let start_index = head_index * 16 + total_index;
+                let q = a
+                    .iter()
+                    .skip(start_index)
+                    .step_by(4 * 16)
+                    .collect::<Vec<_>>();
+                println!("{:?}", q);
+            }
+        }
+    }
+    // }
+}
+
+#[test]
+pub fn test_index() {
+    let mut offset = 0;
+    for seq_i in 0..6 {
+        for head_index in 0..4 {
+            for group_index in 0..2 {
+                offset = seq_i * 4 * 2 + head_index * 2 + group_index;
+                println!("{:?}", offset * 6);
             }
         }
     }
 }
 
 #[test]
-pub fn test_index() {
-    let mut offset = 0;
-    for head_index in 0..4 {
-        for group_index in 0..2 {
-            for seq_i in 0..6 {
-                offset = head_index * 4 * 2 * 6 + group_index * 2 * 6 + seq_i;
-                println!("{:?}", offset);
+pub fn test_self_attention() {
+    let data = {
+        let mut data = vec![];
+        for i in 1..1000 {
+            data.push(i as f32);
+        }
+        data
+    };
+    let n_kv_h = 4;
+    let n_groups = 2;
+    let seq_len = 6;
+    let total_seq_len = 6;
+    let dqkv = 16;
+    let mut hidden_states = Tensor::<f32>::default(&vec![seq_len, n_kv_h * n_groups * dqkv]);
+    let mut att_scores = Tensor::<f32>::new(
+        data[0..n_kv_h * n_groups * seq_len * total_seq_len].to_vec(),
+        &vec![n_kv_h, n_groups, seq_len, total_seq_len],
+    );
+    let q = Tensor::<f32>::new(
+        data[0..seq_len * n_kv_h * n_groups * dqkv].to_vec(),
+        &vec![seq_len, n_kv_h * n_groups, dqkv],
+    );
+    let k = Tensor::<f32>::new(
+        data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
+        &vec![total_seq_len, n_kv_h * dqkv],
+    );
+    let v = Tensor::<f32>::new(
+        data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
+        &vec![total_seq_len, n_kv_h * dqkv],
+    );
+    self_attention(
+        &mut hidden_states,
+        &mut att_scores,
+        &q,
+        &k,
+        &v,
+        n_kv_h,
+        n_groups,
+        seq_len,
+        total_seq_len,
+        dqkv,
+    );
+    hidden_states.print();
+}
+
+#[test]
+pub fn test_hidden_states_index() {
+    let n_kv_h = 4;
+    let n_groups = 2;
+    let seq_len = 6;
+    let dqkv = 16;
+    for seq_i in 0..seq_len {
+        println!("{seq_i:?}");
+        for head_index in 0..n_kv_h {
+            for group_index in 0..n_groups {
+                let start_index =
+                    seq_i * dqkv + (head_index * n_groups + group_index) * seq_len * dqkv;
+                let mut hidden_states_start_index = vec![];
+                for total_index in 0..dqkv {
+                    hidden_states_start_index.push(start_index + total_index + 1);
+                }
+                println!("{:?}", hidden_states_start_index)
             }
         }
     }
