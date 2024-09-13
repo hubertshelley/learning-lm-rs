@@ -2,6 +2,7 @@ mod config;
 mod kvcache;
 mod model;
 mod operators;
+mod output;
 mod params;
 mod tensor;
 
@@ -25,10 +26,14 @@ Hey! Got a question for you!<|im_end|>
     let input_ids = binding.get_ids();
     eprint!("\n{}", input);
     let output_ids = llama.generate(input_ids, 256, 0.55, 35, 0.65);
-    let output_ids = output_ids.into_iter().collect::<Vec<_>>();
-    eprint!("{}", tokenizer.decode(&output_ids, true).unwrap());
-    // for token_id in output_ids {
-    //     eprint!("{}", tokenizer.decode(&vec![token_id], true).unwrap());
-    // }
+    let mut output = output::OutputGenerator::new(tokenizer.clone());
+
+    // let output_ids = output_ids.into_iter().collect::<Vec<_>>();
+    // // eprint!("{}", tokenizer.decode(&output_ids, true).unwrap());
+    for token_id in output_ids {
+        if let Some(token) = output.next_token(token_id) {
+            eprint!("{}", token);
+        }
+    }
     // println!("{}", tokenizer.decode(&output_ids, true).unwrap());
 }
