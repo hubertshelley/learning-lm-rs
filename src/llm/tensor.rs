@@ -39,7 +39,7 @@ impl<T: Copy + Clone + Default> Tensor<T> {
             data: Arc::new(data.into_boxed_slice().try_into().unwrap()),
             shape: shape.clone(),
             offset: 0,
-            length: length,
+            length,
         }
     }
 
@@ -71,7 +71,10 @@ impl<T: Copy + Clone + Default> Tensor<T> {
         let new_length: usize = new_shape.iter().product();
         if new_length != self.length {
             let old_shape = self.shape.clone();
-            panic!("New shape {new_shape:?} does not match tensor of {old_shape:?}");
+            panic!(
+                "New shape {new_shape:?} does not match tensor of {:?}",
+                old_shape
+            );
         }
         self.shape = new_shape.clone();
         self
@@ -99,7 +102,7 @@ impl Tensor<f32> {
         let a = self.data();
         let b = other.data();
 
-        return a.iter().zip(b).all(|(x, y)| float_eq(x, y, rel));
+        a.iter().zip(b).all(|(x, y)| float_eq(x, y, rel))
     }
     #[allow(unused)]
     pub fn print(&self) {

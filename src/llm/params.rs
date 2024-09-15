@@ -1,5 +1,5 @@
-use crate::config::LlamaConfigJson;
-use crate::tensor::Tensor;
+use super::config::LlamaConfigJson;
+use super::tensor::Tensor;
 use safetensors::SafeTensors;
 pub struct LLamaParams<T> {
     // token_id to embedding lookup table

@@ -1,4 +1,3 @@
-use crate::model::LlamaGenerator;
 use tokenizers::Tokenizer;
 
 pub struct OutputGenerator {

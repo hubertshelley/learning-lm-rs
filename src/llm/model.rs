@@ -1,12 +1,12 @@
 use std::fs::File;
 use std::vec;
 
-use crate::config::LlamaConfigJson;
-use crate::kvcache::KVCache;
-use crate::operators as OP;
-use crate::operators::{dot, masked_softmax, matmul_b, matmul_transb, rms_norm, silu};
-use crate::params::LLamaParams;
-use crate::tensor::Tensor;
+use super::config::LlamaConfigJson;
+use super::kvcache::KVCache;
+use super::operators as OP;
+use super::operators::{masked_softmax, matmul_transb, rms_norm, silu};
+use super::params::LLamaParams;
+use super::tensor::Tensor;
 use safetensors::SafeTensors;
 use std::path::Path;
 
@@ -372,218 +372,222 @@ pub fn test_mlp() {
         1e-3
     ))
 }
-
-#[test]
-pub fn test_load_safetensors() {
-    use crate::tensor::float_eq;
+#[cfg(test)]
+mod tests {
+    use crate::llm::model::{self_attention, Llama};
+    use crate::llm::tensor::{float_eq, Tensor};
     use std::path::PathBuf;
-    let project_dir = env!("CARGO_MANIFEST_DIR");
-    let model_dir = PathBuf::from(project_dir).join("models").join("story");
-    let model = Llama::from_safetensors(model_dir);
-    assert_eq!(model.vocab, 2048);
-    assert_eq!(model.n_layers, 2);
-    assert_eq!(model.n_q_h, 8);
-    assert_eq!(model.n_kv_h, 4);
-    assert_eq!(model.d, 128);
-    assert_eq!(model.dqkv, 16);
-    assert_eq!(model.di, 384);
 
-    assert!(float_eq(
-        &model.params.embedding_table.data()[50],
-        &0.14453125,
-        1e-6
-    ));
-    assert_eq!(
-        model.params.lm_head.data()[10],
-        model.params.embedding_table.data()[10]
-    );
-    assert!(float_eq(
-        &model.params.rms_att_w[0].data()[10],
-        &0.18652344,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.rms_ffn_w[1].data()[10],
-        &0.32421875,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.rms_out_w.data()[100],
-        &0.73046875,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.w_down[0].data()[100],
-        &-0.0625,
-        1e-6
-    ));
-    assert!(float_eq(&model.params.w_up[0].data()[100], &1.46875, 1e-6));
-    assert!(float_eq(
-        &model.params.w_gate[1].data()[100],
-        &0.296875,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.wq[1].data()[100],
-        &0.032226563,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.wk[1].data()[100],
-        &-0.21386719,
-        1e-6
-    ));
-    assert!(float_eq(
-        &model.params.wv[0].data()[100],
-        &0.041015625,
-        1e-6
-    ));
-    assert!(float_eq(&model.params.wo[0].data()[100], &0.01965332, 1e-6));
-}
+    #[test]
+    pub fn test_load_safetensors() {
+        let project_dir = env!("CARGO_MANIFEST_DIR");
+        let model_dir = PathBuf::from(project_dir).join("models").join("story");
+        let model = Llama::from_safetensors(model_dir);
+        assert_eq!(model.vocab, 2048);
+        assert_eq!(model.n_layers, 2);
+        assert_eq!(model.n_q_h, 8);
+        assert_eq!(model.n_kv_h, 4);
+        assert_eq!(model.d, 128);
+        assert_eq!(model.dqkv, 16);
+        assert_eq!(model.di, 384);
 
-#[test]
-pub fn test_tensor_transpose() {
-    let a = {
-        let mut a = vec![];
-        for i in 1..2 * 4 * 6 * 16 + 1 {
-            a.push(i);
-        }
-        a
-    };
-    for head_index in 0..4 {
-        for group_index in 0..2 {
-            for seq_i in 0..6 {
-                let start_index = head_index * 2 * 16 + group_index * 16 + seq_i * 4 * 2 * 16;
-                let q = &a[start_index..start_index + 16];
-                println!("{:?}", q);
-            }
-        }
+        assert!(float_eq(
+            &model.params.embedding_table.data()[50],
+            &0.14453125,
+            1e-6
+        ));
+        assert_eq!(
+            model.params.lm_head.data()[10],
+            model.params.embedding_table.data()[10]
+        );
+        assert!(float_eq(
+            &model.params.rms_att_w[0].data()[10],
+            &0.18652344,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.rms_ffn_w[1].data()[10],
+            &0.32421875,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.rms_out_w.data()[100],
+            &0.73046875,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.w_down[0].data()[100],
+            &-0.0625,
+            1e-6
+        ));
+        assert!(float_eq(&model.params.w_up[0].data()[100], &1.46875, 1e-6));
+        assert!(float_eq(
+            &model.params.w_gate[1].data()[100],
+            &0.296875,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.wq[1].data()[100],
+            &0.032226563,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.wk[1].data()[100],
+            &-0.21386719,
+            1e-6
+        ));
+        assert!(float_eq(
+            &model.params.wv[0].data()[100],
+            &0.041015625,
+            1e-6
+        ));
+        assert!(float_eq(&model.params.wo[0].data()[100], &0.01965332, 1e-6));
     }
-}
 
-#[test]
-pub fn test_tensor_transpose_repeat() {
-    let a = {
-        let mut a = vec![];
-        for i in 1..4 * 6 * 16 + 1 {
-            a.push(i);
-        }
-        a
-    };
-    for head_index in 0..4 {
-        for _group_index in 0..2 {
-            for seq_i in 0..6 {
-                // for _total_index in 0..6 {
-                let start_index = head_index * 16 + seq_i * 4 * 16;
-                let q = &a[start_index..start_index + 16];
-                println!("{:?}", q);
-                // }
+    #[test]
+    pub fn test_tensor_transpose() {
+        let a = {
+            let mut a = vec![];
+            for i in 1..2 * 4 * 6 * 16 + 1 {
+                a.push(i);
             }
-        }
-    }
-}
-#[test]
-pub fn test_v_tensor_transpose_repeat() {
-    let a = {
-        let mut a = vec![];
-        for i in 1..4 * 6 * 16 + 1 {
-            a.push(i);
-        }
-        a
-    };
-    // for seq_i in 0..6 {
-    for head_index in 0..4 {
-        for _group_index in 0..2 {
-            for total_index in 0..16 {
-                let start_index = head_index * 16 + total_index;
-                let q = a
-                    .iter()
-                    .skip(start_index)
-                    .step_by(4 * 16)
-                    .collect::<Vec<_>>();
-                println!("{:?}", q);
-            }
-        }
-    }
-    // }
-}
-
-#[test]
-pub fn test_index() {
-    let mut offset = 0;
-    for seq_i in 0..6 {
+            a
+        };
         for head_index in 0..4 {
             for group_index in 0..2 {
-                offset = seq_i * 4 * 2 + head_index * 2 + group_index;
-                println!("{:?}", offset * 6);
+                for seq_i in 0..6 {
+                    let start_index = head_index * 2 * 16 + group_index * 16 + seq_i * 4 * 2 * 16;
+                    let q = &a[start_index..start_index + 16];
+                    println!("{:?}", q);
+                }
             }
         }
     }
-}
 
-#[test]
-pub fn test_self_attention() {
-    let data = {
-        let mut data = vec![];
-        for i in 1..1000 {
-            data.push(i as f32);
-        }
-        data
-    };
-    let n_kv_h = 4;
-    let n_groups = 2;
-    let seq_len = 6;
-    let total_seq_len = 6;
-    let dqkv = 16;
-    let mut hidden_states = Tensor::<f32>::default(&vec![seq_len, n_kv_h * n_groups * dqkv]);
-    let mut att_scores = Tensor::<f32>::new(
-        data[0..n_kv_h * n_groups * seq_len * total_seq_len].to_vec(),
-        &vec![n_kv_h, n_groups, seq_len, total_seq_len],
-    );
-    let q = Tensor::<f32>::new(
-        data[0..seq_len * n_kv_h * n_groups * dqkv].to_vec(),
-        &vec![seq_len, n_kv_h * n_groups, dqkv],
-    );
-    let k = Tensor::<f32>::new(
-        data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
-        &vec![total_seq_len, n_kv_h * dqkv],
-    );
-    let v = Tensor::<f32>::new(
-        data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
-        &vec![total_seq_len, n_kv_h * dqkv],
-    );
-    self_attention(
-        &mut hidden_states,
-        &mut att_scores,
-        &q,
-        &k,
-        &v,
-        n_kv_h,
-        n_groups,
-        seq_len,
-        total_seq_len,
-        dqkv,
-    );
-    hidden_states.print();
-}
-
-#[test]
-pub fn test_hidden_states_index() {
-    let n_kv_h = 4;
-    let n_groups = 2;
-    let seq_len = 6;
-    let dqkv = 16;
-    for seq_i in 0..seq_len {
-        println!("{seq_i:?}");
-        for head_index in 0..n_kv_h {
-            for group_index in 0..n_groups {
-                let start_index =
-                    seq_i * dqkv + (head_index * n_groups + group_index) * seq_len * dqkv;
-                let mut hidden_states_start_index = vec![];
-                for total_index in 0..dqkv {
-                    hidden_states_start_index.push(start_index + total_index + 1);
+    #[test]
+    pub fn test_tensor_transpose_repeat() {
+        let a = {
+            let mut a = vec![];
+            for i in 1..4 * 6 * 16 + 1 {
+                a.push(i);
+            }
+            a
+        };
+        for head_index in 0..4 {
+            for _group_index in 0..2 {
+                for seq_i in 0..6 {
+                    // for _total_index in 0..6 {
+                    let start_index = head_index * 16 + seq_i * 4 * 16;
+                    let q = &a[start_index..start_index + 16];
+                    println!("{:?}", q);
+                    // }
                 }
-                println!("{:?}", hidden_states_start_index)
+            }
+        }
+    }
+    #[test]
+    pub fn test_v_tensor_transpose_repeat() {
+        let a = {
+            let mut a = vec![];
+            for i in 1..4 * 6 * 16 + 1 {
+                a.push(i);
+            }
+            a
+        };
+        // for seq_i in 0..6 {
+        for head_index in 0..4 {
+            for _group_index in 0..2 {
+                for total_index in 0..16 {
+                    let start_index = head_index * 16 + total_index;
+                    let q = a
+                        .iter()
+                        .skip(start_index)
+                        .step_by(4 * 16)
+                        .collect::<Vec<_>>();
+                    println!("{:?}", q);
+                }
+            }
+        }
+        // }
+    }
+
+    #[test]
+    pub fn test_index() {
+        let mut offset = 0;
+        for seq_i in 0..6 {
+            for head_index in 0..4 {
+                for group_index in 0..2 {
+                    offset = seq_i * 4 * 2 + head_index * 2 + group_index;
+                    println!("{:?}", offset * 6);
+                }
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_self_attention() {
+        let data = {
+            let mut data = vec![];
+            for i in 1..1000 {
+                data.push(i as f32);
+            }
+            data
+        };
+        let n_kv_h = 4;
+        let n_groups = 2;
+        let seq_len = 6;
+        let total_seq_len = 6;
+        let dqkv = 16;
+        let mut hidden_states = Tensor::<f32>::default(&vec![seq_len, n_kv_h * n_groups * dqkv]);
+        let mut att_scores = Tensor::<f32>::new(
+            data[0..n_kv_h * n_groups * seq_len * total_seq_len].to_vec(),
+            &vec![n_kv_h, n_groups, seq_len, total_seq_len],
+        );
+        let q = Tensor::<f32>::new(
+            data[0..seq_len * n_kv_h * n_groups * dqkv].to_vec(),
+            &vec![seq_len, n_kv_h * n_groups, dqkv],
+        );
+        let k = Tensor::<f32>::new(
+            data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
+            &vec![total_seq_len, n_kv_h * dqkv],
+        );
+        let v = Tensor::<f32>::new(
+            data[0..total_seq_len * n_kv_h * dqkv].to_vec(),
+            &vec![total_seq_len, n_kv_h * dqkv],
+        );
+        self_attention(
+            &mut hidden_states,
+            &mut att_scores,
+            &q,
+            &k,
+            &v,
+            n_kv_h,
+            n_groups,
+            seq_len,
+            total_seq_len,
+            dqkv,
+        );
+        hidden_states.print();
+    }
+
+    #[test]
+    pub fn test_hidden_states_index() {
+        let n_kv_h = 4;
+        let n_groups = 2;
+        let seq_len = 6;
+        let dqkv = 16;
+        for seq_i in 0..seq_len {
+            println!("{seq_i:?}");
+            for head_index in 0..n_kv_h {
+                for group_index in 0..n_groups {
+                    let start_index =
+                        seq_i * dqkv + (head_index * n_groups + group_index) * seq_len * dqkv;
+                    let mut hidden_states_start_index = vec![];
+                    for total_index in 0..dqkv {
+                        hidden_states_start_index.push(start_index + total_index + 1);
+                    }
+                    println!("{:?}", hidden_states_start_index)
+                }
             }
         }
     }

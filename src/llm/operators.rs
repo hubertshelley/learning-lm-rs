@@ -1,12 +1,12 @@
-use crate::tensor::Tensor;
+use super::tensor::Tensor;
 
 // get (row) vectors from a 2D table given a list of indices
 pub fn gather(y: &mut Tensor<f32>, indices: &Tensor<u32>, table: &Tensor<f32>) {
     let length = indices.size();
     let table_shape = table.shape();
-    assert!(table_shape.len() == 2);
+    assert_eq!(table_shape.len(), 2);
     let dim = table_shape[1];
-    assert!(y.size() == length * dim);
+    assert_eq!(y.size(), length * dim);
     for i in 0..length {
         let src = &table.data()[indices.data()[i] as usize * dim..][..dim];
         let dst = &mut unsafe { y.data_mut() }[i * dim..][..dim];
@@ -17,7 +17,7 @@ pub fn gather(y: &mut Tensor<f32>, indices: &Tensor<u32>, table: &Tensor<f32>) {
 // RoPE: Rotary Positional Embedding
 pub fn rope(y: &mut Tensor<f32>, start_pos: usize, theta: f32) {
     let shape = y.shape();
-    assert!(shape.len() == 3);
+    assert_eq!(shape.len(), 3);
     let seq_len = shape[0];
     let n_heads = shape[1];
     let d = shape[2];
@@ -116,7 +116,7 @@ pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor
     }
 }
 // C = beta * C + alpha * A @ B
-// hint: You don't need to do an explicit of B
+// hint: You don't need to do an exp licit of B
 pub fn matmul_b(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
     let c_row = c.shape()[0];
     let c_col = c.shape()[1];
@@ -144,7 +144,7 @@ pub fn matmul_b(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>
 #[allow(unused)]
 pub fn dot(x: &Tensor<f32>, y: &Tensor<f32>) -> f32 {
     let len = x.size();
-    assert!(len == y.size());
+    assert_eq!(len, y.size());
     let x_ = x.data();
     let y_ = y.data();
     let mut sum = 0.0;
@@ -154,9 +154,9 @@ pub fn dot(x: &Tensor<f32>, y: &Tensor<f32>) -> f32 {
     sum
 }
 
-// Sample a index from a tensor (treated as a probability vector)
+// Sample index from a tensor (treated as a probability vector)
 pub fn random_sample(x: &Tensor<f32>, top_p: f32, top_k: u32, temperature: f32) -> u32 {
-    assert!(x.shape()[x.shape().len() - 1] == x.size());
+    assert_eq!(x.shape()[x.shape().len() - 1], x.size());
     if temperature <= 0. || top_k < 2 || top_p <= 0. {
         return x
             .data()

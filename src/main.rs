@@ -1,19 +1,12 @@
 mod cli;
-mod config;
-mod kvcache;
-mod model;
-mod operators;
-mod output;
-mod params;
-mod tensor;
+mod llm;
+mod operator;
 
 use crate::cli::Cli;
 use clap::Parser;
-use std::path::PathBuf;
-use tokenizers::Tokenizer;
 
 fn main() {
-    let cli = Cli::parse();
+    let _cli = Cli::parse();
 }
 // fn main() {
 //     let project_dir = env!("CARGO_MANIFEST_DIR");
