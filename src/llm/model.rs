@@ -20,7 +20,7 @@ pub struct Llama<T> {
     di: usize,              // dimension of intermediate states
     eps: f32,               // epsilon for RMS normalization
     rope_theta: f32,        // rope theta for rope initialization
-    max_seq_len: usize,     // maximum sequence length
+    pub(crate) max_seq_len: usize,     // maximum sequence length
     params: LLamaParams<T>, // trained weights of this model
     bos_token_id: u32,      // start token id
     eos_token_id: u32,      // end token id

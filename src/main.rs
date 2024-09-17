@@ -1,12 +1,19 @@
-mod cli;
-mod llm;
+pub(crate) mod cli;
+pub(crate) mod llm;
 mod operator;
+mod types;
 
+use std::path::PathBuf;
 use crate::cli::Cli;
 use clap::Parser;
+use tokenizers::Tokenizer;
 
 fn main() {
-    let _cli = Cli::parse();
+    let cli = Cli::parse();
+    let model_dir = PathBuf::from(cli.model_path);
+    let llama = llm::model::Llama::from_safetensors(&model_dir);
+    let tokenizer = Tokenizer::from_file(model_dir.join("tokenizer.json")).unwrap();
+    operator::operate(llama, tokenizer, cli.mode).expect("Error running operator");
 }
 // fn main() {
 //     let project_dir = env!("CARGO_MANIFEST_DIR");

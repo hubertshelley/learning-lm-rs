@@ -19,6 +19,8 @@ pub(crate) enum Mode {
     Chat(ChatMode),
     /// Web模式
     Web(WebMode),
+    /// Web模式
+    Server(ServerMode),
 }
 
 #[derive(Parser)]
@@ -35,12 +37,15 @@ pub(crate) struct ModelArgs {
     /// Top-p 控制
     #[clap(short = 'p', long, default_value_t = 0.9)]
     pub(crate) top_p: f32,
+    /// 流式输出
+    #[clap(long, default_value_t = true)]
+    pub(crate) stream: bool,
 }
 
 #[derive(Parser)]
 pub(crate) struct OnceMode {
     /// 输入提示词
-    #[clap(short, long)]
+    #[clap(long)]
     pub(crate) prompt: String,
     #[command(flatten)]
     pub(crate) model_args: ModelArgs,
@@ -49,10 +54,13 @@ pub(crate) struct OnceMode {
 #[derive(Parser)]
 pub(crate) struct ChatMode {
     /// 系统提示
-    #[clap(short, long)]
+    #[clap(long)]
     pub(crate) system_prompt: Option<String>,
     #[command(flatten)]
     pub(crate) model_args: ModelArgs,
+    /// 对话模板
+    #[clap(long, default_value = "chatml")]
+    pub(crate) template: String,
 }
 
 #[derive(Parser)]
@@ -63,6 +71,20 @@ pub(crate) struct WebMode {
     /// host
     #[clap(long, default_value = "127.0.0.1")]
     pub(crate) host: String,
-    #[command(flatten)]
-    pub(crate) model_args: ModelArgs,
+    /// 对话模板
+    #[clap(long, default_value = "chatml")]
+    pub(crate) template: String,
+}
+
+#[derive(Parser)]
+pub(crate) struct ServerMode {
+    /// 端口号
+    #[clap(long, default_value_t = 8000)]
+    pub(crate) port: u16,
+    /// host
+    #[clap(long, default_value = "127.0.0.1")]
+    pub(crate) host: String,
+    /// 对话模板
+    #[clap(long, default_value = "chatml")]
+    pub(crate) template: String,
 }

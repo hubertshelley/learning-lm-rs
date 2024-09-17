@@ -1,7 +1,7 @@
 mod config;
 mod kvcache;
-mod model;
+pub(crate) mod model;
 mod operators;
-mod output;
+pub(crate) mod output;
 mod params;
 mod tensor;

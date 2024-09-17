@@ -17,7 +17,7 @@ impl OutputGenerator {
         }
     }
 
-    fn decode(&self, tokens: &[u32]) -> String {
+    pub fn decode(&self, tokens: &[u32]) -> String {
         self.tokenizer.decode(tokens, true).unwrap()
     }
 
