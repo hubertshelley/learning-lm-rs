@@ -3,9 +3,9 @@ pub(crate) mod llm;
 mod operator;
 mod types;
 
-use std::path::PathBuf;
 use crate::cli::Cli;
 use clap::Parser;
+use std::path::PathBuf;
 use tokenizers::Tokenizer;
 
 fn main() {

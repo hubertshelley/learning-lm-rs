@@ -11,19 +11,19 @@ use safetensors::SafeTensors;
 use std::path::Path;
 
 pub struct Llama<T> {
-    vocab: usize,           // vocab size
-    n_layers: usize,        // number of layers
-    n_q_h: usize,           // number of heads for q
-    n_kv_h: usize,          // number of heads for k and v
-    d: usize,               // dimension of hidden states
-    dqkv: usize,            // length of a single q, k, or v vector
-    di: usize,              // dimension of intermediate states
-    eps: f32,               // epsilon for RMS normalization
-    rope_theta: f32,        // rope theta for rope initialization
-    pub(crate) max_seq_len: usize,     // maximum sequence length
-    params: LLamaParams<T>, // trained weights of this model
-    bos_token_id: u32,      // start token id
-    eos_token_id: u32,      // end token id
+    vocab: usize,                  // vocab size
+    n_layers: usize,               // number of layers
+    n_q_h: usize,                  // number of heads for q
+    n_kv_h: usize,                 // number of heads for k and v
+    d: usize,                      // dimension of hidden states
+    dqkv: usize,                   // length of a single q, k, or v vector
+    di: usize,                     // dimension of intermediate states
+    eps: f32,                      // epsilon for RMS normalization
+    rope_theta: f32,               // rope theta for rope initialization
+    pub(crate) max_seq_len: usize, // maximum sequence length
+    params: LLamaParams<T>,        // trained weights of this model
+    bos_token_id: u32,             // start token id
+    eos_token_id: u32,             // end token id
 }
 
 impl Llama<f32> {

@@ -1,6 +1,4 @@
-use crate::types::completion::{
-    ChatCompletionMessage, ChatResponseFormatObject, Tool, ToolChoice,
-};
+use crate::types::completion::{ChatCompletionMessage, ChatResponseFormatObject, Tool, ToolChoice};
 use derive_builder::Builder;
 use serde::Deserialize;
 

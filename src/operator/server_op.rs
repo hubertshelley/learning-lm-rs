@@ -1,23 +1,35 @@
 use crate::cli::ServerMode;
 use crate::llm::model::Llama;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use anyhow::anyhow;
-use async_trait::async_trait;
-use tokenizers::Tokenizer;
-use silent::prelude::*;
-use tera::{Context, Tera};
 use crate::llm::output;
-use crate::types::completion::{AssistantMessage, ChatCompletionChoice, ChatResponseFormat, UserMessage};
+use crate::types::completion::{AssistantMessage, ChatCompletionChoice, ChatResponseFormat};
 use crate::types::request::ChatCompletionRequest;
 use crate::types::response::ChatCompletionResponse;
+use anyhow::anyhow;
+use async_trait::async_trait;
+use silent::prelude::*;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tera::{Context, Tera};
+use tokenizers::Tokenizer;
 
-pub(crate) fn operate(mode: ServerMode, llm: Llama<f32>, tokenizer: Tokenizer) -> anyhow::Result<()> {
+pub(crate) fn operate(
+    mode: ServerMode,
+    llm: Llama<f32>,
+    tokenizer: Tokenizer,
+) -> anyhow::Result<()> {
+    logger::fmt().with_max_level(Level::INFO).init();
     let addr: SocketAddr = format!("{}:{}", mode.host, mode.port).parse()?;
     let llm = Arc::new(llm);
     let server = Server::new().bind(addr);
-    let middleware = LlmMiddleware { llm, tokenizer, template: mode.template + ".jinja2", tera: Tera::new("templates/*")? };
-    let route = Route::new("/v1/chat/completions").hook(middleware).post(chat_completions);
+    let middleware = LlmMiddleware {
+        llm,
+        tokenizer,
+        template: mode.template + ".jinja2",
+        tera: Tera::new("templates/*")?,
+    };
+    let route = Route::new("/v1/chat/completions")
+        .hook(middleware)
+        .post(chat_completions);
     server.run(route);
     Ok(())
 }
@@ -31,7 +43,11 @@ struct LlmMiddleware {
 
 #[async_trait]
 impl MiddleWareHandler for LlmMiddleware {
-    async fn pre_request(&self, req: &mut Request, _res: &mut Response) -> Result<MiddlewareResult> {
+    async fn pre_request(
+        &self,
+        req: &mut Request,
+        _res: &mut Response,
+    ) -> Result<MiddlewareResult> {
         req.configs_mut().insert(self.llm.clone());
         req.configs_mut().insert(self.tokenizer.clone());
         req.configs_mut().insert(self.template.clone());
@@ -58,11 +74,21 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     let mut context = Context::new();
     context.insert("messages", &messages);
     context.insert("add_generation_prompt", &true);
-    let input = tera.render(&template, &context).map_err(|e| anyhow!("Failed to render jinja2 template: {}", e))?;
-    let binding = tokenizer.encode(input, true).map_err(|e| anyhow!("Failed to encode prompt: {}", e))?;
+    let input = tera
+        .render(&template, &context)
+        .map_err(|e| anyhow!("Failed to render jinja2 template: {}", e))?;
+    let binding = tokenizer
+        .encode(input, true)
+        .map_err(|e| anyhow!("Failed to encode prompt: {}", e))?;
     let input_ids = binding.get_ids();
     let prompt_tokens = input_ids.len();
-    let output_ids = llm.generate(input_ids, max_tokens.unwrap_or(llm.max_seq_len), top_p.unwrap_or(1.0), 40, temperature.unwrap_or(0.9));
+    let output_ids = llm.generate(
+        input_ids,
+        max_tokens.unwrap_or(llm.max_seq_len),
+        top_p.unwrap_or(1.0),
+        40,
+        temperature.unwrap_or(0.9),
+    );
     let mut output = output::OutputGenerator::new(tokenizer.clone());
 
     if chat_completion_req.stream.clone().unwrap_or(false) {

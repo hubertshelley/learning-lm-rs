@@ -19,7 +19,7 @@ pub(crate) enum Mode {
     Chat(ChatMode),
     /// Web模式
     Web(WebMode),
-    /// Web模式
+    /// 兼容OpenAI的Server模式
     Server(ServerMode),
 }
 
