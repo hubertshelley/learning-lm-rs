@@ -1,11 +1,15 @@
 use crate::cli::ServerMode;
-use crate::llm::model::Llama;
+use crate::llm::model::{Llama, LlamaGenerator};
 use crate::llm::output;
-use crate::types::completion::{AssistantMessage, ChatCompletionChoice, ChatResponseFormat};
+use crate::types::completion::{
+    AssistantMessage, ChatCompletionChoice, ChatResponseFormat, ChatResponseFormatObject,
+    FinishReason,
+};
 use crate::types::request::ChatCompletionRequest;
-use crate::types::response::ChatCompletionResponse;
+use crate::types::response::{ChatCompletionResponse, ChatCompletionResponseChunk};
 use anyhow::anyhow;
 use async_trait::async_trait;
+use futures_util::Stream;
 use silent::prelude::*;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -19,10 +23,9 @@ pub(crate) fn operate(
 ) -> anyhow::Result<()> {
     logger::fmt().with_max_level(Level::INFO).init();
     let addr: SocketAddr = format!("{}:{}", mode.host, mode.port).parse()?;
-    let llm = Arc::new(llm);
     let server = Server::new().bind(addr);
     let middleware = LlmMiddleware {
-        llm,
+        llm: Arc::new(llm),
         tokenizer,
         template: mode.template + ".jinja2",
         tera: Tera::new("templates/*")?,
@@ -68,6 +71,7 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
         temperature,
         top_p,
         max_tokens,
+        model,
         ..
     } = chat_completion_req;
 
@@ -92,16 +96,20 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     let mut output = output::OutputGenerator::new(tokenizer.clone());
 
     if chat_completion_req.stream.clone().unwrap_or(false) {
-        // let stream = chat_model.stream_handle(chat_completion_req).map_err(|e| {
-        //     SilentError::business_error(
-        //         StatusCode::BAD_REQUEST,
-        //         format!("failed to handle chat model: {}", e),
-        //     )
-        // })?;
-        // let result = sse_reply(stream);
-        Ok(Response::empty())
+        let mut response = ChatCompletionResponse::new(model);
+        response.usage.prompt_tokens = prompt_tokens;
+        response.usage.completion_tokens = 0;
+        response.usage.total_tokens = prompt_tokens + 0;
+        let result = sse_reply(ChatModelStream {
+            response_format: chat_completion_req.response_format,
+            response: response.clone(),
+            generator: output_ids,
+            output,
+            is_finished: false,
+        });
+        Ok(result)
     } else {
-        let mut response = ChatCompletionResponse::new("".to_string());
+        let mut response = ChatCompletionResponse::new(model);
         let mut choice = ChatCompletionChoice {
             finish_reason: Default::default(),
             index: 0,
@@ -135,6 +143,57 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
                         Some(choice) => choice.message.content.clone().unwrap_or("".to_string()),
                     };
                     Ok(result.into())
+                }
+            }
+        }
+    }
+}
+
+pub(crate) struct ChatModelStream {
+    response_format: Option<ChatResponseFormatObject>,
+    pub(crate) response: ChatCompletionResponse,
+    generator: LlamaGenerator<f32>,
+    output: output::OutputGenerator,
+    is_finished: bool,
+}
+
+impl Stream for ChatModelStream {
+    type Item = Result<SSEEvent>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        if self.is_finished {
+            std::task::Poll::Ready(None)
+        } else {
+            match self.generator.next() {
+                None => {
+                    self.is_finished = true;
+                    std::task::Poll::Pending
+                }
+                Some(token) => {
+                    self.response.usage.completion_tokens += 1;
+                    self.response.usage.total_tokens += 1;
+                    if let Some(output) = self.output.next_token(token) {
+                        let output = ChatCompletionResponseChunk::from_response(
+                            &self.response,
+                            vec![ChatCompletionChoice {
+                                finish_reason: FinishReason::Null,
+                                index: 0,
+                                message: AssistantMessage {
+                                    content: Some(output),
+                                    name: None,
+                                    tool_calls: vec![],
+                                },
+                            }],
+                        );
+                        std::task::Poll::Ready(Some(Ok(
+                            SSEEvent::default().data(serde_json::to_string(&output).unwrap())
+                        )))
+                    } else {
+                        std::task::Poll::Pending
+                    }
                 }
             }
         }

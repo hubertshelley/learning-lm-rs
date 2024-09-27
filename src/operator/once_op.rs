@@ -1,6 +1,7 @@
 use crate::cli::OnceMode;
 use crate::llm::{model::Llama, output};
 use anyhow::{anyhow, Result};
+use std::sync::Arc;
 use tokenizers::Tokenizer;
 
 pub(crate) fn operate(mode: OnceMode, llm: Llama<f32>, tokenizer: Tokenizer) -> Result<()> {
@@ -8,7 +9,7 @@ pub(crate) fn operate(mode: OnceMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
         .encode(mode.prompt.clone(), true)
         .map_err(|e| anyhow!("Failed to encode prompt: {}", e))?;
     let input_ids = binding.get_ids();
-    let output_ids = llm.generate(
+    let output_ids = Arc::new(llm).generate(
         input_ids,
         mode.model_args.max_length as usize,
         mode.model_args.top_p,

@@ -4,6 +4,7 @@ use crate::llm::output;
 use crate::types::completion::{ChatCompletionMessage, SystemMessage, UserMessage};
 use anyhow::{anyhow, Result};
 use std::io::stdin;
+use std::sync::Arc;
 use tera::{Context, Tera};
 use tokenizers::Tokenizer;
 
@@ -22,6 +23,7 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
     let template = mode.template + ".jinja2";
     let mut input = String::new();
     eprint!("User: ");
+    let llm = Arc::new(llm);
     if let Ok(_) = stdin().read_line(&mut input) {
         messages.push(
             UserMessage {

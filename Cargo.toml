@@ -18,3 +18,4 @@ chrono = "0.4.38"
 uuid = { version = "1.10.0", features = ["v4"] }
 silent = { version = "1.4.2", features = ["sse"] }
 async-trait = "0.1.82"
+futures-util = "0.3.30"

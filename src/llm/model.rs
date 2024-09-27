@@ -9,6 +9,7 @@ use super::params::LLamaParams;
 use super::tensor::Tensor;
 use safetensors::SafeTensors;
 use std::path::Path;
+use std::sync::Arc;
 
 pub struct Llama<T> {
     vocab: usize,                  // vocab size
@@ -157,7 +158,7 @@ impl Llama<f32> {
     }
 
     pub fn generate(
-        &self,
+        self: &Arc<Self>,
         token_ids: &[u32],
         max_len: usize,
         top_p: f32,
@@ -167,7 +168,7 @@ impl Llama<f32> {
         let mut cache = self.new_cache();
         let mut logits = Tensor::<u32>::new(token_ids.to_vec(), &vec![token_ids.len()]);
         LlamaGenerator {
-            model: self,
+            model: self.clone(),
             cache,
             logits,
             max_seq_len: self.max_seq_len,
@@ -183,8 +184,8 @@ impl Llama<f32> {
     }
 }
 
-pub struct LlamaGenerator<'a, T> {
-    model: &'a Llama<T>,
+pub struct LlamaGenerator<T> {
+    model: Arc<Llama<T>>,
     cache: KVCache<T>,
     logits: Tensor<u32>,
     max_seq_len: usize,
@@ -198,7 +199,7 @@ pub struct LlamaGenerator<'a, T> {
     sample: u32,
 }
 
-impl Iterator for LlamaGenerator<'_, f32> {
+impl Iterator for LlamaGenerator<f32> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
