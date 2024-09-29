@@ -16,9 +16,9 @@ pub(crate) fn operate(llm: Llama<f32>, tokenizer: Tokenizer, mode: Mode) -> Resu
         Mode::Chat(mode) => {
             chat_op::operate(mode, llm, tokenizer)?;
         }
-        Mode::Web(mode) => {
-            web_op::operate(mode, llm, tokenizer)?;
-        }
+        // Mode::Web(mode) => {
+        //     web_op::operate(mode, llm, tokenizer)?;
+        // }
         Mode::Server(mode) => {
             server_op::operate(mode, llm, tokenizer)?;
         }

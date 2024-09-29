@@ -15,10 +15,10 @@ pub(crate) struct Cli {
 pub(crate) enum Mode {
     /// 单次生成模式
     Once(OnceMode),
-    /// 聊天模式
+    /// 终端对话模式
     Chat(ChatMode),
-    /// Web模式
-    Web(WebMode),
+    // /// Web模式
+    // Web(WebMode),
     /// 兼容OpenAI的Server模式
     Server(ServerMode),
 }
