@@ -1,28 +1,28 @@
 use super::config::LlamaConfigJson;
 use super::tensor::Tensor;
 use safetensors::SafeTensors;
-pub struct LLamaParams<T> {
+pub struct LLamaParams {
     // token_id to embedding lookup table
-    pub embedding_table: Tensor<T>, // (vocab_size, dim)
+    pub embedding_table: Tensor, // (vocab_size, dim)
     // decoder layer
-    pub rms_att_w: Vec<Tensor<T>>, // (hidden_size, ) x layers
-    pub wq: Vec<Tensor<T>>,        // (n_heads * head_size, hidden_size) x layers
-    pub wk: Vec<Tensor<T>>,        // (n_kv_heads * head_size, hidden_size) x layers
-    pub wv: Vec<Tensor<T>>,        // (n_kv_heads * head_size, hidden_size) x layers
-    pub wo: Vec<Tensor<T>>,        // (hidden_size, n_heads * head_size) x layers
+    pub rms_att_w: Vec<Tensor>, // (hidden_size, ) x layers
+    pub wq: Vec<Tensor>,        // (n_heads * head_size, hidden_size) x layers
+    pub wk: Vec<Tensor>,        // (n_kv_heads * head_size, hidden_size) x layers
+    pub wv: Vec<Tensor>,        // (n_kv_heads * head_size, hidden_size) x layers
+    pub wo: Vec<Tensor>,        // (hidden_size, n_heads * head_size) x layers
     // ffn layer
-    pub rms_ffn_w: Vec<Tensor<T>>, // (hidden_size, ) x layers
-    pub w_up: Vec<Tensor<T>>,      // (intermediate_size, hidden_size) x layers
-    pub w_gate: Vec<Tensor<T>>,    // (intermediate_size, hidden_size) x layers
-    pub w_down: Vec<Tensor<T>>,    // (hidden_size, intermediate_size) x layers
+    pub rms_ffn_w: Vec<Tensor>, // (hidden_size, ) x layers
+    pub w_up: Vec<Tensor>,      // (intermediate_size, hidden_size) x layers
+    pub w_gate: Vec<Tensor>,    // (intermediate_size, hidden_size) x layers
+    pub w_down: Vec<Tensor>,    // (hidden_size, intermediate_size) x layers
     // output
-    pub rms_out_w: Tensor<T>, // (hidden_size, )
-    pub lm_head: Tensor<T>,   // (vocab_size, dim)
+    pub rms_out_w: Tensor, // (hidden_size, )
+    pub lm_head: Tensor,   // (vocab_size, dim)
 }
 
-impl LLamaParams<f32> {
+impl LLamaParams {
     pub fn from_safetensors(safetensor: &SafeTensors, config: &LlamaConfigJson) -> Self {
-        let get_tensor = |name: &str| -> Tensor<f32> {
+        let get_tensor = |name: &str| -> Tensor {
             let tensor = safetensor.tensor(name).unwrap();
             let data = tensor.data();
             let size_in_bytes = tensor.dtype().size();
@@ -31,7 +31,7 @@ impl LLamaParams<f32> {
             // was correctly aligned.
             let data: &[f32] =
                 unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
-            Tensor::new(data.to_vec(), &tensor.shape().to_vec())
+            Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
         };
         let head_size = config.hidden_size / config.num_attention_heads;
         let embedding_table = if config.tie_word_embeddings {
@@ -101,7 +101,7 @@ impl LLamaParams<f32> {
             let wo_item = get_tensor(wo_item_name.as_str());
             assert_eq!(
                 wo_item.shape(),
-                &[config.hidden_size, config.hidden_size,],
+                &[config.hidden_size, config.hidden_size, ],
                 "{}",
                 format!("{wo_item_name} shape is not correct")
             );

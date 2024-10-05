@@ -10,24 +10,22 @@ use super::tensor::Tensor;
 use safetensors::SafeTensors;
 use std::path::Path;
 use std::sync::Arc;
+use crate::llm::linear::Linear;
+use crate::llm::mlp::Mlp;
+use crate::llm::rms_norm::RmsNorm;
+use crate::llm::self_attention::CausalSelfAttention;
 
-pub struct Llama<T> {
-    vocab: usize,                  // vocab size
-    n_layers: usize,               // number of layers
-    n_q_h: usize,                  // number of heads for q
-    n_kv_h: usize,                 // number of heads for k and v
-    d: usize,                      // dimension of hidden states
-    dqkv: usize,                   // length of a single q, k, or v vector
-    di: usize,                     // dimension of intermediate states
-    eps: f32,                      // epsilon for RMS normalization
-    rope_theta: f32,               // rope theta for rope initialization
-    pub(crate) max_seq_len: usize, // maximum sequence length
-    params: LLamaParams<T>,        // trained weights of this model
-    bos_token_id: u32,             // start token id
-    eos_token_id: u32,             // end token id
+pub struct Llama {
+    config: LlamaConfigJson,      // configuration of this model
+    lm_head: Linear,          // linear layer for output
+    ln_f: RmsNorm,                  // layer normalization for output
+    rms_1: Vec<RmsNorm>,
+    attn: CausalSelfAttention,
+    rms_2: Vec<RmsNorm>,
+    mlp: Mlp,
 }
 
-impl Llama<f32> {
+impl Llama {
     pub fn from_safetensors(model_dir: impl AsRef<Path>) -> Self {
         let config = File::open(model_dir.as_ref().join("config.json")).unwrap();
         let config: LlamaConfigJson = serde_json::from_reader(config).unwrap();
@@ -36,19 +34,13 @@ impl Llama<f32> {
         let params = LLamaParams::from_safetensors(&safetensor, &config);
 
         Self {
-            vocab: config.vocab_size,
-            n_layers: config.num_hidden_layers,
-            n_q_h: config.num_attention_heads,
-            n_kv_h: config.num_key_value_heads,
-            d: config.hidden_size,
-            dqkv: config.hidden_size / config.num_attention_heads,
-            di: config.intermediate_size,
-            eps: config.rms_norm_eps,
-            rope_theta: config.rope_theta,
-            max_seq_len: config.max_position_embeddings,
-            params: params,
-            bos_token_id: config.bos_token_id,
-            eos_token_id: config.eos_token_id,
+            config: config.clone(),
+            lm_head: Linear::new(params.lm_head),
+            ln_f: RmsNorm::new(params.rms_out_w),
+            rms_1: params.rms_att_w.iter().cloned().map(|p| RmsNorm::new(p)).collect(),
+            attn: CausalSelfAttention::new(params, &config),
+            rms_2: params.rms_ffn_w.iter().cloned().map(|p| RmsNorm::new(p)).collect(),
+            mlp: (),
         }
     }
 
