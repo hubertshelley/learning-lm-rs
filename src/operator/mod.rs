@@ -8,7 +8,7 @@ use crate::llm::model::Llama;
 use anyhow::Result;
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate(llm: Llama<f32>, tokenizer: Tokenizer, mode: Mode) -> Result<()> {
+pub(crate) fn operate(llm: Llama, tokenizer: Tokenizer, mode: Mode) -> Result<()> {
     match mode {
         Mode::Once(mode) => {
             once_op::operate(mode, llm, tokenizer)?;

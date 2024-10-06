@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tera::{Context, Tera};
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> Result<()> {
+pub(crate) fn operate(mode: ChatMode, llm: Llama, tokenizer: Tokenizer) -> Result<()> {
     let mut tera = Tera::new("templates/*")?;
     let mut messages: Vec<ChatCompletionMessage> = Vec::new();
     if let Some(system_prompt) = mode.system_prompt {
@@ -17,7 +17,7 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
                 content: system_prompt.clone(),
                 ..Default::default()
             }
-            .into(),
+                .into(),
         );
     };
     let template = mode.template + ".jinja2";
@@ -30,7 +30,7 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
                 content: input.trim().to_string(),
                 ..Default::default()
             }
-            .into(),
+                .into(),
         );
         let mut context = Context::new();
         context.insert("messages", &messages);
@@ -71,7 +71,7 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
                 content: input.trim().to_string(),
                 ..Default::default()
             }
-            .into(),
+                .into(),
         );
         context.insert("messages", &messages);
         context.insert("add_generation_prompt", &true);
@@ -126,7 +126,7 @@ mod tests {
                 content: system_prompt.clone(),
                 ..Default::default()
             }
-            .into(),
+                .into(),
         );
         let mut context = Context::new();
         context.insert("messages", &messages);

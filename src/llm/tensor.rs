@@ -1,61 +1,66 @@
+use crate::llm::data::Data;
+use crate::llm::dtype::DType;
 use std::ops::Add;
-use std::{slice, sync::Arc, vec};
+use std::slice;
+use std::sync::Arc;
 
-pub struct Tensor<T> {
-    data: Arc<Box<[T]>>,
+#[derive(Clone, Debug)]
+pub struct Tensor {
+    data: Arc<Box<Vec<Data>>>,
     shape: Vec<usize>,
     offset: usize,
     length: usize,
+    pub d_type: DType,
 }
 
-impl<T> Add<&Tensor<T>> for Tensor<T>
-where
-    T: Add<Output = T> + Default + Clone + Copy,
+
+impl Add<&Tensor> for Tensor
 {
     type Output = Self;
-    fn add(self, other: &Tensor<T>) -> Self {
+    fn add(self, other: &Tensor) -> Self {
         let left = self.data;
         let right = other.data.clone();
         let shape = self.shape;
         assert_eq!(shape, other.shape);
+        assert_eq!(self.d_type, other.d_type);
         let length = self.length;
-        let mut data = vec![T::default(); length];
-        for i in 0..length {
-            data[i] = left[i].clone() + right[i].clone();
-        }
         Tensor {
-            data: Arc::new(data.into_boxed_slice().try_into().unwrap()),
+            data: Arc::new(Box::new(left.iter().cloned().zip(right.iter().cloned()).map(|(x, y)| x + y).collect())),
             shape,
             offset: 0,
             length,
+            d_type: self.d_type,
         }
     }
 }
 
-impl<T: Copy + Clone + Default> Tensor<T> {
-    pub fn new(data: Vec<T>, shape: &Vec<usize>) -> Self {
+impl Tensor {
+    pub fn default_data(&self) -> Data {
+        self.data.first().unwrap().default_value()
+    }
+    pub fn new<T: Into<Data>>(data: Vec<T>, shape: &Vec<usize>) -> Self {
+        let data: Vec<Data> = data.into_iter().map(|x| x.into()).collect();
+        let d_type = data.first().unwrap().d_type();
         let length = data.len();
         Tensor {
-            data: Arc::new(data.into_boxed_slice().try_into().unwrap()),
+            data: Arc::new(Box::new(data)),
             shape: shape.clone(),
             offset: 0,
             length,
+            d_type,
         }
     }
 
-    pub fn default(shape: &Vec<usize>) -> Self {
-        let length = shape.iter().product();
-        let data = vec![T::default(); length];
-        Self::new(data, shape)
+    pub fn data(&self) -> &[Data] {
+        self.data.as_slice()
     }
-
-    pub fn data(&self) -> &[T] {
-        &self.data[self.offset..][..self.length]
-    }
-
-    pub unsafe fn data_mut(&mut self) -> &mut [T] {
-        let ptr = self.data.as_ptr().add(self.offset) as *mut T;
+    pub unsafe fn data_mut(&mut self) -> &mut [Data] {
+        let ptr = self.data.as_ptr().add(self.offset) as *mut Data;
         slice::from_raw_parts_mut(ptr, self.length)
+    }
+
+    pub fn default(shape: &Vec<usize>, d_type: DType) -> Self {
+        Self::new(d_type.default_data(&shape), shape)
     }
 
     pub fn shape(&self) -> &Vec<usize> {
@@ -88,12 +93,13 @@ impl<T: Copy + Clone + Default> Tensor<T> {
             shape: shape.clone(),
             offset: self.offset + start,
             length: new_length,
+            d_type: self.d_type,
         }
     }
 }
 
 // Some helper functions for testing and debugging
-impl Tensor<f32> {
+impl Tensor {
     #[allow(unused)]
     pub fn close_to(&self, other: &Self, rel: f32) -> bool {
         if self.shape() != other.shape() {
@@ -102,24 +108,6 @@ impl Tensor<f32> {
         let a = self.data();
         let b = other.data();
 
-        a.iter().zip(b).all(|(x, y)| float_eq(x, y, rel))
+        a.iter().zip(b).all(|(x, y)| x == y)
     }
-    #[allow(unused)]
-    pub fn print(&self) {
-        println!(
-            "shape: {:?}, offset: {}, length: {}",
-            self.shape, self.offset, self.length
-        );
-        let dim = self.shape()[self.shape().len() - 1];
-        let batch = self.length / dim;
-        for i in 0..batch {
-            let start = i * dim;
-            println!("{:?}", &self.data()[start..][..dim]);
-        }
-    }
-}
-
-#[inline]
-pub fn float_eq(x: &f32, y: &f32, rel: f32) -> bool {
-    (x - y).abs() <= rel * (x.abs() + y.abs()) / 2.0
 }

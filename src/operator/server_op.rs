@@ -18,7 +18,7 @@ use tokenizers::Tokenizer;
 
 pub(crate) fn operate(
     mode: ServerMode,
-    llm: Llama<f32>,
+    llm: Llama,
     tokenizer: Tokenizer,
 ) -> anyhow::Result<()> {
     logger::fmt().with_max_level(Level::INFO).init();
@@ -38,7 +38,7 @@ pub(crate) fn operate(
 }
 
 struct LlmMiddleware {
-    llm: Arc<Llama<f32>>,
+    llm: Arc<Llama>,
     tokenizer: Tokenizer,
     template: String,
     tera: Tera,
@@ -61,7 +61,7 @@ impl MiddleWareHandler for LlmMiddleware {
 
 pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     let chat_completion_req: ChatCompletionRequest = req.json_parse().await?;
-    let llm = req.get_config::<Arc<Llama<f32>>>()?;
+    let llm = req.get_config::<Arc<Llama>>()?;
     let tokenizer = req.get_config::<Tokenizer>()?;
     let template = req.get_config::<String>()?;
     let tera = req.get_config::<Tera>()?;
@@ -152,7 +152,7 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
 pub(crate) struct ChatModelStream {
     response_format: Option<ChatResponseFormatObject>,
     pub(crate) response: ChatCompletionResponse,
-    generator: LlamaGenerator<f32>,
+    generator: LlamaGenerator,
     output: output::OutputGenerator,
     is_finished: bool,
 }
