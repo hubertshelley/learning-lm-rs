@@ -1,15 +1,27 @@
 use crate::llm::dtype::DType;
 use half::{bf16, f16};
 use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub enum Data {
     BF16(bf16),
     F16(f16),
     F32(f32),
     U32(u32),
+}
+
+impl Debug for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Data::BF16(v) => write!(f, "{}", v),
+            Data::F16(v) => write!(f, "{}", v),
+            Data::F32(v) => write!(f, "{}", v),
+            Data::U32(v) => write!(f, "{}", v),
+        }
+    }
 }
 
 impl Data {

@@ -115,4 +115,17 @@ impl Tensor {
 
         a.iter().zip(b).all(|(x, y)| x == y)
     }
+    #[allow(unused)]
+    pub fn print(&self) {
+        println!(
+            "shape: {:?}, offset: {}, length: {}",
+            self.shape, self.offset, self.length
+        );
+        let dim = self.shape()[self.shape().len() - 1];
+        let batch = self.length / dim;
+        for i in 0..batch {
+            let start = i * dim;
+            println!("{:?}", &self.data()[start..][..dim]);
+        }
+    }
 }
