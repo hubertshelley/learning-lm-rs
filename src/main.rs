@@ -1,6 +1,7 @@
 pub(crate) mod cli;
 pub(crate) mod llm;
 mod operator;
+#[allow(dead_code)]
 mod types;
 
 use crate::cli::Cli;

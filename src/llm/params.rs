@@ -1,9 +1,9 @@
-use std::str::FromStr;
-use half::{bf16, f16};
 use super::config::LlamaConfigJson;
 use super::tensor::Tensor;
-use safetensors::SafeTensors;
 use crate::llm::dtype::DType;
+use half::{bf16, f16};
+use safetensors::SafeTensors;
+use std::str::FromStr;
 
 pub struct LLamaParams {
     // token_id to embedding lookup table
@@ -36,19 +36,22 @@ impl LLamaParams {
             // was correctly aligned.
             match d_type {
                 DType::BF16 => {
-                    let data: &[bf16] =
-                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const bf16, elem_count) };
-                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                    let data: &[bf16] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const bf16, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
                 }
                 DType::F16 => {
-                    let data: &[f16] =
-                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f16, elem_count) };
-                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                    let data: &[f16] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const f16, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
                 }
                 DType::F32 => {
-                    let data: &[f32] =
-                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
-                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                    let data: &[f32] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
                 }
                 DType::U32 => {
                     panic!("U32 is not supported")
@@ -88,8 +91,8 @@ impl LLamaParams {
             assert_eq!(
                 rms_att_w_item.shape(),
                 &[config.hidden_size],
-                "{}",
-                format!("{rms_att_w_item_name} shape is not correct")
+                "{} shape is not correct",
+                rms_att_w_item_name
             );
             rms_att_w.push(rms_att_w_item);
             let wq_item_name = format!("model.layers.{layer}.self_attn.q_proj.weight");
@@ -97,8 +100,8 @@ impl LLamaParams {
             assert_eq!(
                 wq_item.shape(),
                 &[head_size * config.num_attention_heads, config.hidden_size],
-                "{}",
-                format!("{wq_item_name} shape is not correct")
+                "{} shape is not correct",
+                wq_item_name
             );
             wq.push(wq_item);
             let wk_item_name = format!("model.layers.{layer}.self_attn.k_proj.weight");
@@ -106,8 +109,8 @@ impl LLamaParams {
             assert_eq!(
                 wk_item.shape(),
                 &[config.num_key_value_heads * head_size, config.hidden_size],
-                "{}",
-                format!("{wk_item_name} shape is not correct")
+                "{} shape is not correct",
+                wk_item_name
             );
             wk.push(wk_item);
             let wv_item_name = format!("model.layers.{layer}.self_attn.v_proj.weight");
@@ -115,17 +118,17 @@ impl LLamaParams {
             assert_eq!(
                 wv_item.shape(),
                 &[config.num_key_value_heads * head_size, config.hidden_size],
-                "{}",
-                format!("{wv_item_name} shape is not correct")
+                "{} shape is not correct",
+                wv_item_name
             );
             wv.push(wv_item);
             let wo_item_name = format!("model.layers.{layer}.self_attn.o_proj.weight");
             let wo_item = get_tensor(wo_item_name.as_str());
             assert_eq!(
                 wo_item.shape(),
-                &[config.hidden_size, config.hidden_size, ],
-                "{}",
-                format!("{wo_item_name} shape is not correct")
+                &[config.hidden_size, config.hidden_size,],
+                "{} shape is not correct",
+                wo_item_name
             );
             wo.push(wo_item);
             let rms_ffn_w_item_name =
@@ -134,8 +137,8 @@ impl LLamaParams {
             assert_eq!(
                 rms_ffn_w_item.shape(),
                 &[config.hidden_size],
-                "{}",
-                format!("{rms_ffn_w_item_name} shape is not correct")
+                "{} shape is not correct",
+                rms_ffn_w_item_name
             );
             rms_ffn_w.push(rms_ffn_w_item);
             let w_up_item_name = format!("model.layers.{layer}.mlp.up_proj.weight");
@@ -143,8 +146,8 @@ impl LLamaParams {
             assert_eq!(
                 w_up_item.shape(),
                 &[config.intermediate_size, config.hidden_size],
-                "{}",
-                format!("{w_up_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_up_item_name
             );
             w_up.push(w_up_item);
             let w_gate_item_name = format!("model.layers.{layer}.mlp.gate_proj.weight");
@@ -152,8 +155,8 @@ impl LLamaParams {
             assert_eq!(
                 w_gate_item.shape(),
                 &[config.intermediate_size, config.hidden_size],
-                "{}",
-                format!("{w_gate_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_gate_item_name
             );
             w_gate.push(w_gate_item);
             let w_down_item_name = format!("model.layers.{layer}.mlp.down_proj.weight");
@@ -161,8 +164,8 @@ impl LLamaParams {
             assert_eq!(
                 w_down_item.shape(),
                 &[config.hidden_size, config.intermediate_size],
-                "{}",
-                format!("{w_down_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_down_item_name
             );
             w_down.push(w_down_item);
         }

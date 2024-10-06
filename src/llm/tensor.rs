@@ -6,16 +6,14 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct Tensor {
-    data: Arc<Box<Vec<Data>>>,
+    data: Arc<Vec<Data>>,
     shape: Vec<usize>,
     offset: usize,
     length: usize,
     pub d_type: DType,
 }
 
-
-impl Add<&Tensor> for Tensor
-{
+impl Add<&Tensor> for Tensor {
     type Output = Self;
     fn add(self, other: &Tensor) -> Self {
         let left = self.data;
@@ -25,7 +23,13 @@ impl Add<&Tensor> for Tensor
         assert_eq!(self.d_type, other.d_type);
         let length = self.length;
         Tensor {
-            data: Arc::new(Box::new(left.iter().cloned().zip(right.iter().cloned()).map(|(x, y)| x + y).collect())),
+            data: Arc::new(
+                left.iter()
+                    .cloned()
+                    .zip(right.iter().cloned())
+                    .map(|(x, y)| x + y)
+                    .collect(),
+            ),
             shape,
             offset: 0,
             length,
@@ -34,17 +38,18 @@ impl Add<&Tensor> for Tensor
     }
 }
 
+#[allow(dead_code)]
 impl Tensor {
     pub fn default_data(&self) -> Data {
         self.data.first().unwrap().default_value()
     }
-    pub fn new<T: Into<Data>>(data: Vec<T>, shape: &Vec<usize>) -> Self {
+    pub fn new<T: Into<Data>>(data: Vec<T>, shape: &[usize]) -> Self {
         let data: Vec<Data> = data.into_iter().map(|x| x.into()).collect();
         let d_type = data.first().unwrap().d_type();
         let length = data.len();
         Tensor {
-            data: Arc::new(Box::new(data)),
-            shape: shape.clone(),
+            data: Arc::new(data),
+            shape: shape.to_owned(),
             offset: 0,
             length,
             d_type,
@@ -59,8 +64,8 @@ impl Tensor {
         slice::from_raw_parts_mut(ptr, self.length)
     }
 
-    pub fn default(shape: &Vec<usize>, d_type: DType) -> Self {
-        Self::new(d_type.default_data(&shape), shape)
+    pub fn default(shape: &[usize], d_type: DType) -> Self {
+        Self::new(d_type.default_data(shape), shape)
     }
 
     pub fn shape(&self) -> &Vec<usize> {
@@ -85,12 +90,12 @@ impl Tensor {
         self
     }
 
-    pub fn slice(&self, start: usize, shape: &Vec<usize>) -> Self {
+    pub fn slice(&self, start: usize, shape: &[usize]) -> Self {
         let new_length: usize = shape.iter().product();
         assert!(self.offset + start + new_length <= self.length);
         Tensor {
             data: self.data.clone(),
-            shape: shape.clone(),
+            shape: shape.to_owned(),
             offset: self.offset + start,
             length: new_length,
             d_type: self.d_type,

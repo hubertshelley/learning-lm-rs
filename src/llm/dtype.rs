@@ -1,6 +1,6 @@
+use crate::llm::data::Data;
 use anyhow::anyhow;
 use half::{bf16, f16};
-use crate::llm::data::Data;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DType {
@@ -30,7 +30,7 @@ impl std::str::FromStr for DType {
 }
 
 impl DType {
-    pub fn default_data(&self, shape: &Vec<usize>) -> Vec<Data> {
+    pub fn default_data(&self, shape: &[usize]) -> Vec<Data> {
         let length = shape.iter().product();
         match self {
             DType::BF16 => vec![bf16::default().into(); length],

@@ -125,6 +125,8 @@ pub fn matmul_transb(c: &mut Tensor, beta: f32, a: &Tensor, b: &Tensor, alpha: f
         }
     }
 }
+
+#[allow(dead_code)]
 // C = beta * C + alpha * A @ B
 // hint: You don't need to do an exp licit of B
 pub fn matmul_b(c: &mut Tensor, beta: f32, a: &Tensor, b: &Tensor, alpha: f32) {
@@ -144,7 +146,8 @@ pub fn matmul_b(c: &mut Tensor, beta: f32, a: &Tensor, b: &Tensor, alpha: f32) {
             for x in a[i * a_col..i * a_col + a_col]
                 .iter()
                 .zip(b[j..].iter().step_by(b_col))
-                .map(|(&a, &b)| a * b) {
+                .map(|(&a, &b)| a * b)
+            {
                 sum += x;
             }
             c[i * c_col + j] = c[i * c_col + j] * beta + sum * alpha;
@@ -204,7 +207,7 @@ pub fn random_sample(x: &Tensor, top_p: f32, top_k: u32, temperature: f32) -> u3
         #[inline]
         fn from((i, p): (usize, &Data)) -> Self {
             Self {
-                val: p.clone(),
+                val: *p,
                 tok: i as _,
             }
         }
@@ -221,7 +224,8 @@ pub fn random_sample(x: &Tensor, top_p: f32, top_k: u32, temperature: f32) -> u3
     let max = core::mem::replace(&mut logits[0].val, x.d_type.transfer_from_f32(1.));
     // softmax & sum
     for i in 1..logits.len() {
-        logits[i].val = logits[i - 1].val + ((logits[i].val - max) / x.d_type.transfer_from_f32(temperature)).exp();
+        logits[i].val = logits[i - 1].val
+            + ((logits[i].val - max) / x.d_type.transfer_from_f32(temperature)).exp();
     }
     // topk & topp & random
     let pk = logits[(top_k as usize).min(logits.len()) - 1].val;
@@ -234,52 +238,43 @@ pub fn random_sample(x: &Tensor, top_p: f32, top_k: u32, temperature: f32) -> u3
 // Your implementation should at least pass the following tests:
 #[test]
 fn test_silu() {
-    let mut y = Tensor::new(vec![2., 3., 4.].into(), &vec![1, 3]);
-    let x = Tensor::new(vec![1., 2., 3.].into(), &vec![1, 3]);
+    let mut y = Tensor::new(vec![2., 3., 4.], &[1, 3]);
+    let x = Tensor::new(vec![1., 2., 3.], &[1, 3]);
     silu(&mut y, &x);
     println!("{:?}", y);
     assert!(y.close_to(
-        &Tensor::new(vec![1.4621172, 5.2847824, 11.430889], &vec![1, 3]),
+        &Tensor::new(vec![1.4621172, 5.2847824, 11.430889], &[1, 3]),
         1e-3,
     ));
 }
 
 #[test]
 fn test_rms_norm() {
-    let mut y = Tensor::new(vec![1., 2., 3., 4.].into(), &vec![2, 2]);
-    let x = Tensor::new(vec![1., 2., 3., 4.].into(), &vec![2, 2]);
-    let w = Tensor::new(vec![1., 2.].into(), &vec![2]);
+    let mut y = Tensor::new(vec![1., 2., 3., 4.], &[2, 2]);
+    let x = Tensor::new(vec![1., 2., 3., 4.], &[2, 2]);
+    let w = Tensor::new(vec![1., 2.], &[2]);
     let epsilon = y.d_type.transfer_from_f32(1e-6);
     rms_norm(&mut y, &x, &w, epsilon);
     assert!(y.close_to(
-        &Tensor::new(
-            vec![0.6324554, 2.5298216, 0.8485281, 2.2627416].into(),
-            &vec![2, 2],
-        ),
+        &Tensor::new(vec![0.6324554, 2.5298216, 0.8485281, 2.2627416], &[2, 2],),
         1e-3,
     ));
 }
 
 #[test]
 fn test_matmul_transb() {
-    let mut c = Tensor::new(vec![1., 2., 3., 4.].into(), &vec![2, 2]);
-    let a = Tensor::new(vec![1., 2., 3., 4., 5., 6.].into(), &vec![2, 3]);
-    let b = Tensor::new(vec![1., 2., 3., 4., 5., 6.].into(), &vec![2, 3]);
+    let mut c = Tensor::new(vec![1., 2., 3., 4.], &[2, 2]);
+    let a = Tensor::new(vec![1., 2., 3., 4., 5., 6.], &[2, 3]);
+    let b = Tensor::new(vec![1., 2., 3., 4., 5., 6.], &[2, 3]);
     matmul_transb(&mut c, 1., &a, &b, 1.);
-    assert!(c.close_to(
-        &Tensor::new(vec![15., 34., 35., 81.].into(), &vec![2, 2]),
-        1e-3,
-    ));
+    assert!(c.close_to(&Tensor::new(vec![15., 34., 35., 81.], &[2, 2]), 1e-3,));
 }
 
 #[test]
 fn test_matmul_b() {
-    let mut c = Tensor::new(vec![1., 2., 3., 4.].into(), &vec![2, 2]);
-    let a = Tensor::new(vec![1., 2., 3., 4., 5., 6.].into(), &vec![2, 3]);
-    let b = Tensor::new(vec![1., 4., 2., 5., 3., 6.].into(), &vec![3, 2]);
+    let mut c = Tensor::new(vec![1., 2., 3., 4.], &[2, 2]);
+    let a = Tensor::new(vec![1., 2., 3., 4., 5., 6.], &[2, 3]);
+    let b = Tensor::new(vec![1., 4., 2., 5., 3., 6.], &[3, 2]);
     matmul_b(&mut c, 1., &a, &b, 1.);
-    assert!(c.close_to(
-        &Tensor::new(vec![15., 34., 35., 81.].into(), &vec![2, 2]),
-        1e-3,
-    ));
+    assert!(c.close_to(&Tensor::new(vec![15., 34., 35., 81.], &[2, 2]), 1e-3,));
 }
