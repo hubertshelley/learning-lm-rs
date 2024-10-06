@@ -1,6 +1,10 @@
+use std::str::FromStr;
+use half::{bf16, f16};
 use super::config::LlamaConfigJson;
 use super::tensor::Tensor;
 use safetensors::SafeTensors;
+use crate::llm::dtype::DType;
+
 pub struct LLamaParams {
     // token_id to embedding lookup table
     pub embedding_table: Tensor, // (vocab_size, dim)
@@ -22,6 +26,7 @@ pub struct LLamaParams {
 
 impl LLamaParams {
     pub fn from_safetensors(safetensor: &SafeTensors, config: &LlamaConfigJson) -> Self {
+        let d_type = DType::from_str(config.torch_dtype.as_str()).expect("Invalid dtype");
         let get_tensor = |name: &str| -> Tensor {
             let tensor = safetensor.tensor(name).unwrap();
             let data = tensor.data();
@@ -29,9 +34,26 @@ impl LLamaParams {
             let elem_count = data.len() / size_in_bytes;
             // SAFETY This is safe because we just checked that this
             // was correctly aligned.
-            let data: &[f32] =
-                unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
-            Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+            match d_type {
+                DType::BF16 => {
+                    let data: &[bf16] =
+                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const bf16, elem_count) };
+                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                }
+                DType::F16 => {
+                    let data: &[f16] =
+                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f16, elem_count) };
+                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                }
+                DType::F32 => {
+                    let data: &[f32] =
+                        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
+                    Tensor::new(data.to_vec().into(), &tensor.shape().to_vec())
+                }
+                DType::U32 => {
+                    panic!("U32 is not supported")
+                }
+            }
         };
         let head_size = config.hidden_size / config.num_attention_heads;
         let embedding_table = if config.tie_word_embeddings {
