@@ -48,24 +48,33 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     #[test]
     fn test_once_forward() {
-        let cli = Cli {
-            model_path: "./models/story".to_string(),
-            mode: cli::Mode::Once(cli::OnceMode {
-                prompt: "Once upon a time, ".to_string(),
-                model_args: cli::ModelArgs {
-                    max_length: 512,
-                    top_k: 1,
-                    temperature: 1.0,
-                    top_p: 1.0,
-                    stream: true,
-                },
-            }),
+        let mode = cli::OnceMode {
+            prompt: "Once upon a time, ".to_string(),
+            model_args: cli::ModelArgs {
+                max_length: 512,
+                top_k: 1,
+                temperature: 1.0,
+                top_p: 1.0,
+                stream: true,
+            },
         };
-        let model_dir = PathBuf::from(cli.model_path);
+        let model_dir = PathBuf::from("./models/story");
         let llama = llm::model::Llama::from_safetensors(&model_dir);
         let tokenizer = Tokenizer::from_file(model_dir.join("tokenizer.json")).unwrap();
-        operator::operate(llama, tokenizer, cli.mode).expect("Error running operator");
+        let binding = tokenizer.encode(mode.prompt.clone(), true).unwrap();
+        let input_ids = binding.get_ids();
+        let output_ids = Arc::new(llama).generate(
+            input_ids,
+            mode.model_args.max_length as usize,
+            mode.model_args.top_p,
+            mode.model_args.top_k,
+            mode.model_args.temperature,
+        );
+        for token_id in output_ids {
+            return;
+        }
     }
 }
