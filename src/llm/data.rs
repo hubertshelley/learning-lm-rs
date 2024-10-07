@@ -16,10 +16,10 @@ pub enum Data {
 impl Debug for Data {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Data::BF16(v) => write!(f, "{}", v),
-            Data::F16(v) => write!(f, "{}", v),
-            Data::F32(v) => write!(f, "{}", v),
-            Data::U32(v) => write!(f, "{}", v),
+            Data::BF16(v) => write!(f, "{:?}", v),
+            Data::F16(v) => write!(f, "{:?}", v),
+            Data::F32(v) => write!(f, "{:?}", v),
+            Data::U32(v) => write!(f, "{:?}", v),
         }
     }
 }

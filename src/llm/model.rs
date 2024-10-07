@@ -583,7 +583,8 @@ mod tests {
             total_seq_len,
             dqkv,
         );
-        println!("{:?}", hidden_states);
+        hidden_states.print();
+        att_scores.print();
     }
 
     #[test]
