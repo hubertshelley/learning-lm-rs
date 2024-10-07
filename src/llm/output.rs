@@ -2,7 +2,7 @@ use tokenizers::Tokenizer;
 
 pub struct OutputGenerator {
     tokenizer: Tokenizer,
-    tokens: Vec<u32>,
+    pub tokens: Vec<u32>,
     prev_index: usize,
     current_index: usize,
 }

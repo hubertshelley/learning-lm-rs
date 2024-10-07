@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tera::{Context, Tera};
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> Result<()> {
-    let mut tera = Tera::new("templates/*")?;
+pub(crate) fn operate(mode: ChatMode, llm: Llama, tokenizer: Tokenizer) -> Result<()> {
+    let tera = Tera::new("templates/*")?;
     let mut messages: Vec<ChatCompletionMessage> = Vec::new();
     if let Some(system_prompt) = mode.system_prompt {
         messages.push(
@@ -24,7 +24,7 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
     let mut input = String::new();
     eprint!("User: ");
     let llm = Arc::new(llm);
-    if let Ok(_) = stdin().read_line(&mut input) {
+    if stdin().read_line(&mut input).is_ok() {
         messages.push(
             UserMessage {
                 content: input.trim().to_string(),
@@ -63,16 +63,13 @@ pub(crate) fn operate(mode: ChatMode, llm: Llama<f32>, tokenizer: Tokenizer) -> 
         }
         eprint!("\nUser: ");
     }
-    while let Ok(_) = stdin().read_line(&mut input) {
+    while stdin().read_line(&mut input).is_ok() {
         let mut context = Context::new();
-        let mut messages: Vec<ChatCompletionMessage> = Vec::new();
-        messages.push(
-            UserMessage {
-                content: input.trim().to_string(),
-                ..Default::default()
-            }
-            .into(),
-        );
+        let messages: Vec<ChatCompletionMessage> = vec![UserMessage {
+            content: input.trim().to_string(),
+            ..Default::default()
+        }
+        .into()];
         context.insert("messages", &messages);
         context.insert("add_generation_prompt", &true);
         let input = tera.render(&template, &context)?;
@@ -113,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_jinja2_template() {
-        let mut tera = Tera::new("templates/*")
+        let tera = Tera::new("templates/*")
             .map_err(|e| {
                 eprintln!("Error parsing templates: {}", e);
                 e

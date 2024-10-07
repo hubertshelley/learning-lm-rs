@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use std::sync::Arc;
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate(mode: OnceMode, llm: Llama<f32>, tokenizer: Tokenizer) -> Result<()> {
+pub(crate) fn operate(mode: OnceMode, llm: Llama, tokenizer: Tokenizer) -> Result<()> {
     let binding = tokenizer
         .encode(mode.prompt.clone(), true)
         .map_err(|e| anyhow!("Failed to encode prompt: {}", e))?;

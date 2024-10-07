@@ -3,6 +3,7 @@ use crate::llm::model::Llama;
 use anyhow::Result;
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate<T>(_mode: WebMode, llm: Llama<T>, tokenizer: Tokenizer) -> Result<()> {
+#[allow(dead_code)]
+pub(crate) fn operate(_mode: WebMode, _llm: Llama, _tokenizer: Tokenizer) -> Result<()> {
     Ok(())
 }

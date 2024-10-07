@@ -1,37 +1,62 @@
 use super::config::LlamaConfigJson;
 use super::tensor::Tensor;
+use crate::llm::dtype::DType;
+use half::{bf16, f16};
 use safetensors::SafeTensors;
-pub struct LLamaParams<T> {
+use std::str::FromStr;
+
+pub struct LLamaParams {
     // token_id to embedding lookup table
-    pub embedding_table: Tensor<T>, // (vocab_size, dim)
+    pub embedding_table: Tensor, // (vocab_size, dim)
     // decoder layer
-    pub rms_att_w: Vec<Tensor<T>>, // (hidden_size, ) x layers
-    pub wq: Vec<Tensor<T>>,        // (n_heads * head_size, hidden_size) x layers
-    pub wk: Vec<Tensor<T>>,        // (n_kv_heads * head_size, hidden_size) x layers
-    pub wv: Vec<Tensor<T>>,        // (n_kv_heads * head_size, hidden_size) x layers
-    pub wo: Vec<Tensor<T>>,        // (hidden_size, n_heads * head_size) x layers
+    pub rms_att_w: Vec<Tensor>, // (hidden_size, ) x layers
+    pub wq: Vec<Tensor>,        // (n_heads * head_size, hidden_size) x layers
+    pub wk: Vec<Tensor>,        // (n_kv_heads * head_size, hidden_size) x layers
+    pub wv: Vec<Tensor>,        // (n_kv_heads * head_size, hidden_size) x layers
+    pub wo: Vec<Tensor>,        // (hidden_size, n_heads * head_size) x layers
     // ffn layer
-    pub rms_ffn_w: Vec<Tensor<T>>, // (hidden_size, ) x layers
-    pub w_up: Vec<Tensor<T>>,      // (intermediate_size, hidden_size) x layers
-    pub w_gate: Vec<Tensor<T>>,    // (intermediate_size, hidden_size) x layers
-    pub w_down: Vec<Tensor<T>>,    // (hidden_size, intermediate_size) x layers
+    pub rms_ffn_w: Vec<Tensor>, // (hidden_size, ) x layers
+    pub w_up: Vec<Tensor>,      // (intermediate_size, hidden_size) x layers
+    pub w_gate: Vec<Tensor>,    // (intermediate_size, hidden_size) x layers
+    pub w_down: Vec<Tensor>,    // (hidden_size, intermediate_size) x layers
     // output
-    pub rms_out_w: Tensor<T>, // (hidden_size, )
-    pub lm_head: Tensor<T>,   // (vocab_size, dim)
+    pub rms_out_w: Tensor, // (hidden_size, )
+    pub lm_head: Tensor,   // (vocab_size, dim)
 }
 
-impl LLamaParams<f32> {
+impl LLamaParams {
     pub fn from_safetensors(safetensor: &SafeTensors, config: &LlamaConfigJson) -> Self {
-        let get_tensor = |name: &str| -> Tensor<f32> {
+        let d_type = DType::from_str(config.torch_dtype.as_str()).expect("Invalid dtype");
+        let get_tensor = |name: &str| -> Tensor {
             let tensor = safetensor.tensor(name).unwrap();
             let data = tensor.data();
             let size_in_bytes = tensor.dtype().size();
             let elem_count = data.len() / size_in_bytes;
             // SAFETY This is safe because we just checked that this
             // was correctly aligned.
-            let data: &[f32] =
-                unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count) };
-            Tensor::new(data.to_vec(), &tensor.shape().to_vec())
+            match d_type {
+                DType::BF16 => {
+                    let data: &[bf16] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const bf16, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
+                }
+                DType::F16 => {
+                    let data: &[f16] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const f16, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
+                }
+                DType::F32 => {
+                    let data: &[f32] = unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const f32, elem_count)
+                    };
+                    Tensor::new(data.to_vec(), tensor.shape())
+                }
+                DType::U32 => {
+                    panic!("U32 is not supported")
+                }
+            }
         };
         let head_size = config.hidden_size / config.num_attention_heads;
         let embedding_table = if config.tie_word_embeddings {
@@ -66,8 +91,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 rms_att_w_item.shape(),
                 &[config.hidden_size],
-                "{}",
-                format!("{rms_att_w_item_name} shape is not correct")
+                "{} shape is not correct",
+                rms_att_w_item_name
             );
             rms_att_w.push(rms_att_w_item);
             let wq_item_name = format!("model.layers.{layer}.self_attn.q_proj.weight");
@@ -75,8 +100,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 wq_item.shape(),
                 &[head_size * config.num_attention_heads, config.hidden_size],
-                "{}",
-                format!("{wq_item_name} shape is not correct")
+                "{} shape is not correct",
+                wq_item_name
             );
             wq.push(wq_item);
             let wk_item_name = format!("model.layers.{layer}.self_attn.k_proj.weight");
@@ -84,8 +109,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 wk_item.shape(),
                 &[config.num_key_value_heads * head_size, config.hidden_size],
-                "{}",
-                format!("{wk_item_name} shape is not correct")
+                "{} shape is not correct",
+                wk_item_name
             );
             wk.push(wk_item);
             let wv_item_name = format!("model.layers.{layer}.self_attn.v_proj.weight");
@@ -93,8 +118,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 wv_item.shape(),
                 &[config.num_key_value_heads * head_size, config.hidden_size],
-                "{}",
-                format!("{wv_item_name} shape is not correct")
+                "{} shape is not correct",
+                wv_item_name
             );
             wv.push(wv_item);
             let wo_item_name = format!("model.layers.{layer}.self_attn.o_proj.weight");
@@ -102,8 +127,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 wo_item.shape(),
                 &[config.hidden_size, config.hidden_size,],
-                "{}",
-                format!("{wo_item_name} shape is not correct")
+                "{} shape is not correct",
+                wo_item_name
             );
             wo.push(wo_item);
             let rms_ffn_w_item_name =
@@ -112,8 +137,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 rms_ffn_w_item.shape(),
                 &[config.hidden_size],
-                "{}",
-                format!("{rms_ffn_w_item_name} shape is not correct")
+                "{} shape is not correct",
+                rms_ffn_w_item_name
             );
             rms_ffn_w.push(rms_ffn_w_item);
             let w_up_item_name = format!("model.layers.{layer}.mlp.up_proj.weight");
@@ -121,8 +146,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 w_up_item.shape(),
                 &[config.intermediate_size, config.hidden_size],
-                "{}",
-                format!("{w_up_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_up_item_name
             );
             w_up.push(w_up_item);
             let w_gate_item_name = format!("model.layers.{layer}.mlp.gate_proj.weight");
@@ -130,8 +155,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 w_gate_item.shape(),
                 &[config.intermediate_size, config.hidden_size],
-                "{}",
-                format!("{w_gate_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_gate_item_name
             );
             w_gate.push(w_gate_item);
             let w_down_item_name = format!("model.layers.{layer}.mlp.down_proj.weight");
@@ -139,8 +164,8 @@ impl LLamaParams<f32> {
             assert_eq!(
                 w_down_item.shape(),
                 &[config.hidden_size, config.intermediate_size],
-                "{}",
-                format!("{w_down_item_name} shape is not correct")
+                "{} shape is not correct",
+                w_down_item_name
             );
             w_down.push(w_down_item);
         }
