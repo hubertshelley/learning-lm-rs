@@ -16,11 +16,7 @@ use std::sync::Arc;
 use tera::{Context, Tera};
 use tokenizers::Tokenizer;
 
-pub(crate) fn operate(
-    mode: ServerMode,
-    llm: Llama<f32>,
-    tokenizer: Tokenizer,
-) -> anyhow::Result<()> {
+pub(crate) fn operate(mode: ServerMode, llm: Llama, tokenizer: Tokenizer) -> anyhow::Result<()> {
     logger::fmt().with_max_level(Level::INFO).init();
     let addr: SocketAddr = format!("{}:{}", mode.host, mode.port).parse()?;
     let server = Server::new().bind(addr);
@@ -38,7 +34,7 @@ pub(crate) fn operate(
 }
 
 struct LlmMiddleware {
-    llm: Arc<Llama<f32>>,
+    llm: Arc<Llama>,
     tokenizer: Tokenizer,
     template: String,
     tera: Tera,
@@ -61,7 +57,7 @@ impl MiddleWareHandler for LlmMiddleware {
 
 pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     let chat_completion_req: ChatCompletionRequest = req.json_parse().await?;
-    let llm = req.get_config::<Arc<Llama<f32>>>()?;
+    let llm = req.get_config::<Arc<Llama>>()?;
     let tokenizer = req.get_config::<Tokenizer>()?;
     let template = req.get_config::<String>()?;
     let tera = req.get_config::<Tera>()?;
@@ -79,7 +75,7 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     context.insert("messages", &messages);
     context.insert("add_generation_prompt", &true);
     let input = tera
-        .render(&template, &context)
+        .render(template, &context)
         .map_err(|e| anyhow!("Failed to render jinja2 template: {}", e))?;
     let binding = tokenizer
         .encode(input, true)
@@ -95,11 +91,11 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     );
     let mut output = output::OutputGenerator::new(tokenizer.clone());
 
-    if chat_completion_req.stream.clone().unwrap_or(false) {
+    if chat_completion_req.stream.unwrap_or(false) {
         let mut response = ChatCompletionResponse::new(model);
         response.usage.prompt_tokens = prompt_tokens;
         response.usage.completion_tokens = 0;
-        response.usage.total_tokens = prompt_tokens + 0;
+        response.usage.total_tokens = prompt_tokens;
         let result = sse_reply(ChatModelStream {
             response_format: chat_completion_req.response_format,
             response: response.clone(),
@@ -149,10 +145,11 @@ pub(crate) async fn chat_completions(mut req: Request) -> Result<Response> {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) struct ChatModelStream {
     response_format: Option<ChatResponseFormatObject>,
     pub(crate) response: ChatCompletionResponse,
-    generator: LlamaGenerator<f32>,
+    generator: LlamaGenerator,
     output: output::OutputGenerator,
     is_finished: bool,
 }
