@@ -116,8 +116,6 @@ impl Llama<f32> {
                 total_seq_len,
                 self.dqkv,
             );
-            hidden_states.print();
-            att_scores.print();
             OP::matmul_transb(
                 &mut residual,
                 1.,
