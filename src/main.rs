@@ -73,7 +73,7 @@ mod tests {
             mode.model_args.top_k,
             mode.model_args.temperature,
         );
-        for token_id in output_ids {
+        for _token_id in output_ids {
             return;
         }
     }

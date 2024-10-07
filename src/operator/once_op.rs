@@ -30,6 +30,5 @@ pub(crate) fn operate(mode: OnceMode, llm: Llama, tokenizer: Tokenizer) -> Resul
             output.decode(output_ids.collect::<Vec<u32>>().as_slice())
         )
     }
-    println!("{:?}", output.tokens);
     Ok(())
 }

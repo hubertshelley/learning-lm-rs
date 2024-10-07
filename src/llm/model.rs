@@ -264,7 +264,7 @@ fn self_attention(
     let q_data = q.data();
     let k_data = k.data();
     let v_data = v.data();
-    let dqkv_sqrt = hidden_states.d_type.transfer_from_usize(dqkv);
+    let dqkv_sqrt = hidden_states.d_type.transfer_from_usize(dqkv).sqrt();
     for head_index in 0..n_kv_h {
         for group_index in 0..n_groups {
             for seq_i in 0..seq_len {
